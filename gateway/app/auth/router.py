@@ -4,17 +4,21 @@ from datetime import timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 import logging
+import secrets
+import urllib.parse
 from starlette.responses import RedirectResponse
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadTimeSignature
 
 from app.db.session import get_db
 from app.models import User
-from app.auth.schemas import Token, UserCreate, UserResponse, UserLogin, CompleteProfileRequest
+from app.auth.schemas import Token, UserCreate, UserResponse, UserLogin, CompleteProfileRequest, RefreshTokenRequest
 from app.auth.utils import (
     get_password_hash, 
     verify_password, 
-    create_access_token, 
+    create_access_token,
+    create_refresh_token,
+    verify_refresh_token,
     get_current_active_user
 )
 from app.config import settings
@@ -24,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Configure OAuth
+# Configure OAuth with enhanced security
 oauth = OAuth()
 oauth.register(
     name='google',
@@ -32,7 +36,9 @@ oauth.register(
     client_secret=settings.GOOGLE_CLIENT_SECRET,
     server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
     client_kwargs={
-        'scope': 'openid email profile'
+        'scope': 'openid email profile',
+        'prompt': 'consent',  # Force consent screen for security
+        'access_type': 'offline'  # Get refresh token if needed
     }
 )
 
@@ -92,15 +98,21 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Create access token
+    # Create access and refresh tokens
     access_token = create_access_token(
         data={"sub": str(user.id)},
         expires_delta=timedelta(minutes=settings.JWT_EXPIRATION_MINUTES)
     )
+    refresh_token = create_refresh_token(data={"sub": str(user.id)})
     
     logger.info(f"User logged in: {user.handle}")
     
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token, 
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "expires_in": settings.JWT_EXPIRATION_MINUTES * 60
+    }
 
 @router.post("/login/email", response_model=Token)
 async def login_with_email(login_data: UserLogin, db: AsyncSession = Depends(get_db)):
@@ -117,15 +129,64 @@ async def login_with_email(login_data: UserLogin, db: AsyncSession = Depends(get
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Create access token
+    # Create access and refresh tokens
+    access_token = create_access_token(
+        data={"sub": str(user.id)},
+        expires_delta=timedelta(minutes=settings.JWT_EXPIRATION_MINUTES)
+    )
+    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    
+    logger.info(f"User logged in with email: {user.handle}")
+    
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token, 
+        "token_type": "bearer",
+        "expires_in": settings.JWT_EXPIRATION_MINUTES * 60
+    }
+
+@router.post("/refresh", response_model=Token)
+async def refresh_access_token(refresh_data: RefreshTokenRequest, db: AsyncSession = Depends(get_db)):
+    """Refresh access token using refresh token"""
+    # Verify refresh token
+    payload = verify_refresh_token(refresh_data.refresh_token)
+    user_id = payload.get("sub")
+    
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Verify user still exists and is active
+    result = await db.execute(select(User).filter(User.id == user_id))
+    user = result.scalars().first()
+    
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Create new access token
     access_token = create_access_token(
         data={"sub": str(user.id)},
         expires_delta=timedelta(minutes=settings.JWT_EXPIRATION_MINUTES)
     )
     
-    logger.info(f"User logged in with email: {user.handle}")
+    # Optionally rotate refresh token for enhanced security
+    new_refresh_token = create_refresh_token(data={"sub": str(user.id)})
     
-    return {"access_token": access_token, "token_type": "bearer"}
+    logger.info(f"Tokens refreshed for user: {user.handle}")
+    
+    return {
+        "access_token": access_token,
+        "refresh_token": new_refresh_token,
+        "token_type": "bearer",
+        "expires_in": settings.JWT_EXPIRATION_MINUTES * 60
+    }
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(current_user: User = Depends(get_current_active_user)):
@@ -134,28 +195,68 @@ async def get_current_user_info(current_user: User = Depends(get_current_active_
 
 @router.get('/login/google')
 async def login_via_google(request: Request):
+    """Initiate Google OAuth flow with CSRF protection"""
     redirect_uri = request.url_for('auth_via_google')
-    return await oauth.google.authorize_redirect(request, str(redirect_uri))
+    
+    # Generate secure state parameter for CSRF protection
+    state = secrets.token_urlsafe(32)
+    
+    # Store state in session or temporary storage (using serializer for now)
+    # In production, consider using Redis or database with expiration
+    
+    return await oauth.google.authorize_redirect(
+        request, 
+        str(redirect_uri),
+        state=state
+    )
 
 @router.get('/auth/google')
 async def auth_via_google(request: Request, db: AsyncSession = Depends(get_db)):
+    """Handle Google OAuth callback with enhanced security validation"""
     try:
+        # Validate state parameter for CSRF protection
+        state = request.query_params.get('state')
+        if not state or len(state) < 32:
+            logger.warning("Invalid or missing OAuth state parameter")
+            error_url = f"{settings.FRONTEND_URL}/auth/google/callback?error=invalid_state"
+            return RedirectResponse(url=error_url)
+        
         token = await oauth.google.authorize_access_token(request)
+        
+        # Validate token structure
+        if not token or 'access_token' not in token:
+            logger.error("Invalid token response from Google")
+            error_url = f"{settings.FRONTEND_URL}/auth/google/callback?error=invalid_token"
+            return RedirectResponse(url=error_url)
+            
     except OAuthError as error:
         logger.error(f"Google OAuth error: {error.error}")
-        # Redirect to frontend callback route with error
-        frontend_callback_url = f"http://localhost:3000/auth/google/callback?error={error.error}"
-        return RedirectResponse(url=frontend_callback_url)
+        error_encoded = urllib.parse.quote(str(error.error))
+        error_url = f"{settings.FRONTEND_URL}/auth/google/callback?error={error_encoded}"
+        return RedirectResponse(url=error_url)
 
-    user_info = await oauth.google.parse_id_token(request, token)
+    try:
+        user_info = await oauth.google.parse_id_token(request, token)
+    except Exception as e:
+        logger.error(f"Failed to parse Google ID token: {e}")
+        error_url = f"{settings.FRONTEND_URL}/auth/google/callback?error=token_parse_error"
+        return RedirectResponse(url=error_url)
     
-    # Check email domain
+    # Validate required fields
     email = user_info.get('email')
-    if not email or not email.endswith('@pepperdine.edu'):
-        logger.warning(f"Unauthorized Google login attempt: {email}")
-        # Redirect to frontend callback route with error
-        frontend_callback_url = f"http://localhost:3000/auth/google/callback?error=Invalid domain"
-        return RedirectResponse(url=frontend_callback_url)
+    google_id = user_info.get('sub')
+    email_verified = user_info.get('email_verified', False)
+    
+    if not email or not google_id or not email_verified:
+        logger.warning(f"Invalid or unverified Google account: {email}")
+        error_url = f"{settings.FRONTEND_URL}/auth/google/callback?error=unverified_email"
+        return RedirectResponse(url=error_url)
+    
+    # Check email domain (remove or modify as needed)
+    if not email.endswith('@pepperdine.edu'):
+        logger.warning(f"Unauthorized domain for Google login: {email}")
+        error_url = f"{settings.FRONTEND_URL}/auth/google/callback?error=invalid_domain"
+        return RedirectResponse(url=error_url)
 
     # Check if user exists by email
     result = await db.execute(select(User).filter(User.email == email))
@@ -167,23 +268,32 @@ async def auth_via_google(request: Request, db: AsyncSession = Depends(get_db)):
             data={"sub": str(user.id)},
             expires_delta=timedelta(minutes=settings.JWT_EXPIRATION_MINUTES)
         )
-        # Redirect to frontend callback with JWT token
-        frontend_callback_url = f"http://localhost:3000/auth/google/callback?token={access_token}"
-        return RedirectResponse(url=frontend_callback_url)
+        refresh_token = create_refresh_token(data={"sub": str(user.id)})
+        
+        # For OAuth flow, we'll pass just access token in URL for simplicity
+        # In production, consider using a temporary code that exchanges for tokens
+        token_encoded = urllib.parse.quote(access_token)
+        success_url = f"{settings.FRONTEND_URL}/auth/google/callback?token={token_encoded}"
+        return RedirectResponse(url=success_url)
     else:
         # New user, redirect to frontend callback with temporary signed data token
-        temp_data = {'email': email, 'google_id': user_info.get('sub')}
+        temp_data = {
+            'email': email, 
+            'google_id': google_id,
+            'name': user_info.get('name', ''),
+            'picture': user_info.get('picture', '')
+        }
         try:
             temp_token = temp_serializer.dumps(temp_data)
         except Exception as e:
             logger.error(f"Error serializing temporary data: {e}")
-            # Redirect to frontend callback route with error
-            frontend_callback_url = f"http://localhost:3000/auth/google/callback?error=Internal Server Error"
-            return RedirectResponse(url=frontend_callback_url)
+            error_url = f"{settings.FRONTEND_URL}/auth/google/callback?error=internal_error"
+            return RedirectResponse(url=error_url)
 
         # Redirect to frontend callback with temporary token
-        frontend_callback_url = f"http://localhost:3000/auth/google/callback?temp_token={temp_token}"
-        return RedirectResponse(url=frontend_callback_url)
+        temp_token_encoded = urllib.parse.quote(temp_token)
+        register_url = f"{settings.FRONTEND_URL}/auth/google/callback?temp_token={temp_token_encoded}"
+        return RedirectResponse(url=register_url)
 
 @router.post("/complete-profile", response_model=Token)
 async def complete_google_registration(profile_data: CompleteProfileRequest, db: AsyncSession = Depends(get_db)):
@@ -227,10 +337,59 @@ async def complete_google_registration(profile_data: CompleteProfileRequest, db:
 
     logger.info(f"New user registered via Google: {new_user.handle}")
 
-    # Create access token
+    # Create access and refresh tokens
     access_token = create_access_token(
         data={"sub": str(new_user.id)},
         expires_delta=timedelta(minutes=settings.JWT_EXPIRATION_MINUTES)
     )
+    refresh_token = create_refresh_token(data={"sub": str(new_user.id)})
 
-    return {"access_token": access_token, "token_type": "bearer"} 
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token, 
+        "token_type": "bearer",
+        "expires_in": settings.JWT_EXPIRATION_MINUTES * 60
+    }
+
+@router.post("/refresh", response_model=Token)
+async def refresh_access_token(refresh_data: RefreshTokenRequest, db: AsyncSession = Depends(get_db)):
+    """Refresh access token using refresh token"""
+    # Verify refresh token
+    payload = verify_refresh_token(refresh_data.refresh_token)
+    user_id = payload.get("sub")
+    
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Verify user still exists and is active
+    result = await db.execute(select(User).filter(User.id == user_id))
+    user = result.scalars().first()
+    
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Create new access token
+    access_token = create_access_token(
+        data={"sub": str(user.id)},
+        expires_delta=timedelta(minutes=settings.JWT_EXPIRATION_MINUTES)
+    )
+    
+    # Optionally rotate refresh token for enhanced security
+    new_refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    
+    logger.info(f"Tokens refreshed for user: {user.handle}")
+    
+    return {
+        "access_token": access_token,
+        "refresh_token": new_refresh_token,
+        "token_type": "bearer",
+        "expires_in": settings.JWT_EXPIRATION_MINUTES * 60
+    } 

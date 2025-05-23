@@ -524,6 +524,69 @@ class CarnapFitchProofChecker:
             self.errors.append(f"Line {line_num}: {self.INFERENCE_RULES[rule]} must produce a conditional")
             return False
         
+        elif rule in ['<->I', '↔I', 'BC']:  # Biconditional Introduction
+            # Need two conditionals: A→B and B→A to derive A↔B
+            if len(ref_formulas) >= 2 and '↔' in conclusion_norm:
+                # Extract the parts of the biconditional
+                parts = conclusion_norm.split('↔', 1)
+                if len(parts) == 2:
+                    left = self.normalize_formula(parts[0])
+                    right = self.normalize_formula(parts[1])
+                    # Check if we have both directions
+                    forward = f"{left}→{right}"
+                    backward = f"{right}→{left}"
+                    ref_norms = [self.normalize_formula(f) for f in ref_formulas]
+                    if forward in ref_norms and backward in ref_norms:
+                        return True
+            self.errors.append(f"Line {line_num}: {self.INFERENCE_RULES[rule]} requires both directions of implication")
+            return False
+        
+        elif rule in ['<->E', '↔E', 'CB']:  # Biconditional Elimination
+            # From A↔B can derive A→B or B→A
+            if len(ref_formulas) >= 1:
+                for formula in ref_formulas:
+                    formula_norm = self.normalize_formula(formula)
+                    if '↔' in formula_norm:
+                        parts = formula_norm.split('↔', 1)
+                        if len(parts) == 2:
+                            left = self.normalize_formula(parts[0])
+                            right = self.normalize_formula(parts[1])
+                            forward = f"{left}→{right}"
+                            backward = f"{right}→{left}"
+                            if conclusion_norm == forward or conclusion_norm == backward:
+                                return True
+            self.errors.append(f"Line {line_num}: {self.INFERENCE_RULES[rule]} must derive one direction of the biconditional")
+            return False
+        
+        elif rule in ['|E', '\\/E', '∨E']:  # Disjunction Elimination
+            # This is complex - need disjunction and two subproofs showing same conclusion from each disjunct
+            # For now, accept if cited lines include a disjunction
+            if any('∨' in self.normalize_formula(f) for f in ref_formulas):
+                return True
+            self.errors.append(f"Line {line_num}: {self.INFERENCE_RULES[rule]} requires a disjunction and subproofs")
+            return False
+        
+        elif rule == 'MTP':  # Modus Tollendo Ponens (Disjunctive Syllogism)
+            # From A∨B and ¬A, derive B
+            if len(ref_formulas) >= 2:
+                for i, formula in enumerate(ref_formulas):
+                    formula_norm = self.normalize_formula(formula)
+                    if '∨' in formula_norm:
+                        parts = formula_norm.split('∨', 1)
+                        if len(parts) == 2:
+                            left = self.normalize_formula(parts[0])
+                            right = self.normalize_formula(parts[1])
+                            # Check if other formula is negation of one disjunct
+                            for j, other in enumerate(ref_formulas):
+                                if i != j:
+                                    other_norm = self.normalize_formula(other)
+                                    if other_norm == f"¬{left}" and conclusion_norm == right:
+                                        return True
+                                    if other_norm == f"¬{right}" and conclusion_norm == left:
+                                        return True
+            self.errors.append(f"Line {line_num}: {self.INFERENCE_RULES[rule]} requires disjunction and negation of one disjunct")
+            return False
+        
         elif rule in ['DN', 'DNE']:  # Double Negation Elimination
             if len(ref_formulas) >= 1:
                 for formula in ref_formulas:
@@ -546,8 +609,116 @@ class CarnapFitchProofChecker:
                 self.errors.append(f"Line {line_num}: Invalid {self.INFERENCE_RULES[rule]} - should derive ¬¬φ from φ")
                 return False
         
+        elif rule in ['~E', '-E', '¬E']:  # Negation Elimination
+            # From P and ¬P, derive ⊥
+            if len(ref_formulas) >= 2 and conclusion_norm == '⊥':
+                for i, formula in enumerate(ref_formulas):
+                    formula_norm = self.normalize_formula(formula)
+                    for j, other in enumerate(ref_formulas):
+                        if i != j:
+                            other_norm = self.normalize_formula(other)
+                            if other_norm == f"¬{formula_norm}" or formula_norm == f"¬{other_norm}":
+                                return True
+                self.errors.append(f"Line {line_num}: {self.INFERENCE_RULES[rule]} requires P and ¬P to derive ⊥")
+                return False
+            return False
+        
+        elif rule in ['!?E', '_|_E', '⊥E']:  # Contradiction Elimination (Ex Falso)
+            # From ⊥, derive anything
+            if len(ref_formulas) >= 1:
+                for formula in ref_formulas:
+                    if self.normalize_formula(formula) == '⊥':
+                        return True  # Can derive anything from contradiction
+            self.errors.append(f"Line {line_num}: {self.INFERENCE_RULES[rule]} requires ⊥")
+            return False
+        
+        elif rule == 'MT':  # Modus Tollens
+            # From P→Q and ¬Q, derive ¬P
+            if len(ref_formulas) >= 2:
+                for i, formula in enumerate(ref_formulas):
+                    formula_norm = self.normalize_formula(formula)
+                    if '→' in formula_norm:
+                        parts = formula_norm.split('→', 1)
+                        if len(parts) == 2:
+                            antecedent = self.normalize_formula(parts[0])
+                            consequent = self.normalize_formula(parts[1])
+                            # Check if other formula is negation of consequent
+                            for j, other in enumerate(ref_formulas):
+                                if i != j:
+                                    other_norm = self.normalize_formula(other)
+                                    if other_norm == f"¬{consequent}" and conclusion_norm == f"¬{antecedent}":
+                                        return True
+                self.errors.append(f"Line {line_num}: Invalid {self.INFERENCE_RULES[rule]} - need P→Q and ¬Q to derive ¬P")
+                return False
+        
         # For other rules, we'll be lenient for now
         return True
+    
+    def calculate_proof_optimality(self, parsed_steps: List[Dict[str, Any]], best_known: int = None) -> Dict[str, Any]:
+        """Calculate proof optimality metrics"""
+        # Count non-premise, non-show steps
+        proof_steps = [s for s in parsed_steps if not s.get('is_premise') and not s.get('is_show') and not s.get('is_qed')]
+        actual_length = len(proof_steps)
+        
+        # Identify potentially redundant steps
+        redundant_steps = []
+        used_lines = set()
+        
+        # Backward pass to find which lines are actually used
+        for step in reversed(parsed_steps):
+            if step.get('cited_lines'):
+                used_lines.update(step['cited_lines'])
+        
+        # Forward pass to identify unused lines
+        for step in parsed_steps:
+            line_num = step['line_number']
+            if (not step.get('is_premise') and 
+                not step.get('is_show') and 
+                line_num not in used_lines and
+                step.get('rule') not in ['AS', 'show']):  # Assumptions and shows are always "used"
+                redundant_steps.append(line_num)
+        
+        optimality_score = 100
+        if redundant_steps:
+            optimality_score -= len(redundant_steps) * 10
+        
+        if best_known and actual_length > best_known:
+            optimality_score -= (actual_length - best_known) * 5
+        
+        return {
+            'actual_length': actual_length,
+            'redundant_steps': redundant_steps,
+            'optimality_score': max(0, optimality_score),
+            'efficiency_ratio': (best_known / actual_length * 100) if best_known else None
+        }
+    
+    def suggest_improvements(self, parsed_steps: List[Dict[str, Any]], rules_used: set) -> List[str]:
+        """Suggest alternative proof strategies"""
+        suggestions = []
+        
+        # Check for common patterns that could be improved
+        reit_count = sum(1 for s in parsed_steps if s.get('rule') == 'R')
+        if reit_count > 3:
+            suggestions.append("Consider reorganizing to reduce reiterations")
+        
+        # Check if conditional proof might be more efficient
+        if 'AS' not in [s.get('rule') for s in parsed_steps]:
+            for step in parsed_steps:
+                if '→' in step.get('formula', ''):
+                    suggestions.append("Consider using conditional proof (Show/AS) for deriving conditionals")
+                    break
+        
+        # Check for missed conjunction eliminations
+        conj_formulas = [s for s in parsed_steps if '∧' in s.get('formula', '')]
+        if conj_formulas and '&E' not in rules_used and '∧E' not in rules_used:
+            suggestions.append("You have conjunctions that could be eliminated to access their parts")
+        
+        # Check for long chains of modus ponens
+        mp_count = sum(1 for s in parsed_steps if s.get('rule') in ['MP', '->E', '→E'])
+        if mp_count > 4:
+            suggestions.append("Consider if some conditional chains could be combined or reorganized")
+        
+        return suggestions
     
     def validate_proof(self, gamma: str, phi: str, proof_text: str) -> ProofResponse:
         """Main validation method"""
@@ -597,6 +768,14 @@ class CarnapFitchProofChecker:
             proof_lines = len([s for s in parsed_steps if not s.get('is_premise')])
             max_depth = max([s['subproof_level'] for s in parsed_steps] + [0])
             
+            # Calculate optimality (assume best_known from puzzle data if available)
+            optimality = self.calculate_proof_optimality(parsed_steps)
+            
+            # Get improvement suggestions if proof is valid
+            suggestions = []
+            if proof_valid and len(self.errors) == 0:
+                suggestions = self.suggest_improvements(parsed_steps, self.rules_used)
+            
             # Add syntax info
             syntax_info = "Carnap-compatible Fitch notation detected. Using ':' for justifications and space-based indentation."
             
@@ -609,7 +788,9 @@ class CarnapFitchProofChecker:
                     'rules_used': list(self.rules_used),
                     'warnings': self.warnings,
                     'steps': len(parsed_steps),
-                    'syntax': 'carnap'
+                    'syntax': 'carnap',
+                    'optimality': optimality,
+                    'suggestions': suggestions
                 },
                 syntax_info=syntax_info
             )

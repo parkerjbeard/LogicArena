@@ -12,11 +12,15 @@ class Settings(BaseSettings):
     JWT_SECRET: str = os.getenv("JWT_SECRET", "dev_secret_key_change_in_production")
     JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
     JWT_EXPIRATION_MINUTES: int = int(os.getenv("JWT_EXPIRATION_MINUTES", "60"))
+    JWT_REFRESH_EXPIRATION_DAYS: int = int(os.getenv("JWT_REFRESH_EXPIRATION_DAYS", "7"))
+    CSRF_SECRET: str = os.getenv("CSRF_SECRET", "csrf_secret_change_in_production")
     
     # Google OAuth
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
     SECRET_KEY: str = os.getenv("SECRET_KEY", "another_dev_secret_change_me") # Used for session/state signing
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    OAUTH_STATE_EXPIRY: int = int(os.getenv("OAUTH_STATE_EXPIRY", "600"))  # 10 minutes
     
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://logicuser:logicpass@postgres:5432/logicarena")

@@ -4,7 +4,9 @@ import re
 
 class Token(BaseModel):
     access_token: str
+    refresh_token: Optional[str] = None
     token_type: str = "bearer"
+    expires_in: Optional[int] = None
 
 class TokenData(BaseModel):
     user_id: Optional[int] = None
@@ -42,4 +44,7 @@ class CompleteProfileRequest(BaseModel):
     def handle_alphanumeric(cls, v):
         if not re.match(r'^[a-zA-Z0-9_-]+$', v):
             raise ValueError('Handle must be alphanumeric with optional underscores and hyphens')
-        return v 
+        return v
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str 
