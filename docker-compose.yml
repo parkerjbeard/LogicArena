@@ -1,0 +1,117 @@
+version: '3.8'
+
+services:
+  # API Gateway
+  gateway:
+    build: ./gateway
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - DATABASE_URL=postgresql://logicuser:logicpass@postgres:5432/logicarena
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET=${JWT_SECRET:-production_secret_key}
+      - PROOF_CHECKER_URL=http://proof-checker:5003
+    restart: always
+    networks:
+      - logic_network
+
+  # Frontend
+  front:
+    build: ./front
+    ports:
+      - "3000:3000"
+    environment:
+      - API_URL=http://localhost:8000
+      - WS_URL=ws://localhost:8000
+    restart: always
+    networks:
+      - logic_network
+
+  # Matchmaking Service
+  match:
+    build: ./match
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      - DATABASE_URL=postgresql://logicuser:logicpass@postgres:5432/logicarena
+      - REDIS_URL=redis://redis:6379/0
+    restart: always
+    networks:
+      - logic_network
+
+  # Puzzle Service
+  puzzle:
+    build: ./puzzle
+    depends_on:
+      - postgres
+      - redis
+      - proof-checker
+    environment:
+      - DATABASE_URL=postgresql://logicuser:logicpass@postgres:5432/logicarena
+      - REDIS_URL=redis://redis:6379/0
+      - PROOF_CHECKER_URL=http://proof-checker:5003
+    restart: always
+    networks:
+      - logic_network
+
+  # Proof Checker Service
+  proof-checker:
+    build: 
+      context: ./proof-checker
+      dockerfile: Dockerfile.simple
+    ports:
+      - "5003:5003"
+    restart: always
+    networks:
+      - logic_network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # Rating Service
+  rating:
+    build: ./rating
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - DATABASE_URL=postgresql://logicuser:logicpass@postgres:5432/logicarena
+      - REDIS_URL=redis://redis:6379/0
+    restart: always
+    networks:
+      - logic_network
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=logicuser
+      - POSTGRES_PASSWORD=logicpass
+      - POSTGRES_DB=logicarena
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+    networks:
+      - logic_network
+
+  # Redis for Caching and Pub/Sub
+  redis:
+    image: redis:7
+    volumes:
+      - redis_data:/data
+    restart: always
+    networks:
+      - logic_network
+
+networks:
+  logic_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data: 

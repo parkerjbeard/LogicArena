@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-rgb: 255, 255, 255;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --foreground-rgb: 255, 255, 255;
+    --background-rgb: 15, 23, 42;
+  }
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: rgb(var(--background-rgb));
+}
+
+/* Monaco editor customizations */
+.monaco-editor .bracket-match {
+  background-color: rgba(0, 120, 215, 0.2);
+  border: 1px solid rgba(0, 120, 215, 0.5);
+}
+
+.proof-line-error {
+  text-decoration: wavy underline red;
+  text-decoration-skip-ink: none;
+}
+
+.proof-line-valid {
+  background-color: rgba(0, 255, 0, 0.1);
+}
+
+/* Fitch-style indentation */
+.fitch-indent-line {
+  border-left: 2px solid #666;
+  margin-left: 2em;
+  padding-left: 1em;
+} 

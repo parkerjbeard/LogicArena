@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  # Frontend
+  front:
+    build:
+      context: ./front
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      # These will need to be updated if you want full functionality later
+      - API_URL=http://localhost:8000
+      - WS_URL=ws://localhost:8000
+    networks:
+      - logic_network_front
+
+networks:
+  logic_network_front:
+    driver: bridge 

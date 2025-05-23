@@ -1,0 +1,6 @@
+redis
+psycopg2-binary
+sqlalchemy
+asyncio
+python-dotenv
+loguru 

@@ -1,0 +1,9 @@
+redis
+psycopg2-binary
+sqlalchemy
+aiohttp
+asyncio
+python-dotenv
+httpx
+loguru
+pydantic 
