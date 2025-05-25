@@ -31,22 +31,22 @@ export default function Home() {
       </div>
 
       {isAuthenticated && user && (
-        <div className="mb-6 bg-indigo-50 p-4 rounded-lg shadow-sm w-full max-w-md">
+        <div className="mb-6 bg-gray-800/50 backdrop-blur-sm p-4 rounded-lg border border-gray-700/50 w-full max-w-md">
           <div className="flex justify-between items-center">
             <div>
-              <p className="text-indigo-900 font-medium">Welcome, {user.handle}</p>
-              <p className="text-sm text-indigo-700">Rating: {user.rating}</p>
+              <p className="text-gray-200 font-medium">Welcome, {user.handle}</p>
+              <p className="text-sm text-gray-400">Rating: {user.rating}</p>
             </div>
             <div className="flex space-x-3">
               <Link 
                 href={`/profile/${user.id}`}
-                className="px-3 py-1 text-sm font-medium text-indigo-600 bg-white rounded-md border border-indigo-200 hover:bg-indigo-50"
+                className="px-3 py-1 text-sm font-medium text-blue-400 hover:text-blue-300 bg-gray-800/30 rounded-md border border-gray-700 hover:bg-gray-700/30"
               >
                 My Profile
               </Link>
               <button
                 onClick={logout}
-                className="px-3 py-1 text-sm font-medium text-red-600 bg-white rounded-md border border-red-200 hover:bg-red-50"
+                className="px-3 py-1 text-sm font-medium text-red-400 hover:text-red-300 bg-gray-800/30 rounded-md border border-gray-700 hover:bg-gray-700/30"
               >
                 Logout
               </button>
@@ -55,7 +55,22 @@ export default function Home() {
         </div>
       )}
 
-      <div className="mb-32 grid text-center lg:mb-0 lg:grid-cols-2 lg:text-left gap-8">
+      <div className="mb-32 grid text-center lg:mb-0 lg:grid-cols-3 lg:text-left gap-8">
+        <Link
+          href="/tutorials"
+          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30 bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20"
+        >
+          <h2 className={`mb-3 text-2xl font-semibold text-purple-700 dark:text-purple-300`}>
+            Tutorials{' '}
+            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
+              ✨
+            </span>
+          </h2>
+          <p className={`m-0 max-w-[30ch] text-sm text-purple-600 dark:text-purple-400`}>
+            New to logic? Start here with interactive lessons and guided proofs.
+          </p>
+        </Link>
+
         <Link
           href="/practice"
           className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"

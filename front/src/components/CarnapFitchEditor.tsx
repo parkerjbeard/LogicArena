@@ -115,8 +115,11 @@ const CarnapFitchEditor: React.FC<CarnapFitchEditorProps> = ({
         ],
         
         justification: [
-          // Rules
-          [/PR|AS|R|REIT|MP|MT|DN|DNE|DNI|&I|&E|\/\\I|\/\\E|\|I|\|E|\\/I|\\/E|ADD|MTP|->I|->E|CP|<->I|<->E|BC|CB|~I|~E|-I|-E|!?I|!?E|_\|_I|_\|_E|ID|IP|RAA|DD|CD|AI|AE|EI|EE|UI|UE/i, 'rule'],
+          // Rules - split into multiple patterns to avoid regex complexity
+          [/\b(PR|AS|R|REIT|MP|MT|DN|DNE|DNI)\b/i, 'rule'],
+          [/\b(&I|&E|ADD|MTP|CP|BC|CB|ID|IP|RAA|DD|CD|AI|AE|EI|EE|UI|UE)\b/i, 'rule'],
+          [/\b(->I|->E|<->I|<->E|~I|~E|-I|-E)\b/i, 'rule'],
+          [/\b(\|I|\|E|\/I|\/E|!I|!E|_\|_I|_\|_E)\b/i, 'rule'],
           
           // Line numbers and ranges
           [/\d+(-\d+)?/, 'number'],
@@ -255,17 +258,17 @@ const CarnapFitchEditor: React.FC<CarnapFitchEditorProps> = ({
   return (
     <div className="carnap-fitch-editor-container">
       {showSyntaxGuide && (
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-t-lg p-3">
+        <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700/50 rounded-t-lg p-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <InfoIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+              <InfoIcon className="w-4 h-4 text-blue-400" />
+              <span className="text-sm font-medium text-gray-200">
                 Carnap-Compatible Fitch Notation
               </span>
             </div>
             <button
               onClick={() => setShowGuide(!showGuide)}
-              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+              className="text-sm text-blue-400 hover:text-blue-300 hover:underline"
             >
               {showGuide ? 'Hide' : 'Show'} Syntax Guide
             </button>
@@ -273,28 +276,28 @@ const CarnapFitchEditor: React.FC<CarnapFitchEditorProps> = ({
           
           {showGuide && (
             <div className="mt-3 space-y-3">
-              <div className="text-sm text-gray-700 dark:text-gray-300">
+              <div className="text-sm text-gray-300">
                 <p className="font-semibold mb-1">Basic Format:</p>
-                <code className="bg-white dark:bg-gray-800 px-2 py-1 rounded">
+                <code className="bg-gray-900/50 px-2 py-1 rounded border border-gray-700/50">
                   formula :justification
                 </code>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                 <div>
-                  <p className="font-semibold text-gray-700 dark:text-gray-300 mb-1">Common Rules:</p>
-                  <ul className="space-y-1 text-gray-600 dark:text-gray-400">
-                    <li><code className="bg-white dark:bg-gray-800 px-1 rounded">:PR</code> - Premise</li>
-                    <li><code className="bg-white dark:bg-gray-800 px-1 rounded">:AS</code> - Assumption</li>
-                    <li><code className="bg-white dark:bg-gray-800 px-1 rounded">:MP 1,2</code> - Modus Ponens</li>
-                    <li><code className="bg-white dark:bg-gray-800 px-1 rounded">:&I 1,2</code> - Conjunction Intro</li>
-                    <li><code className="bg-white dark:bg-gray-800 px-1 rounded">:R 1</code> - Reiteration</li>
+                  <p className="font-semibold text-gray-300 mb-1">Common Rules:</p>
+                  <ul className="space-y-1 text-gray-400">
+                    <li><code className="bg-gray-900/50 px-1 rounded">:PR</code> - Premise</li>
+                    <li><code className="bg-gray-900/50 px-1 rounded">:AS</code> - Assumption</li>
+                    <li><code className="bg-gray-900/50 px-1 rounded">:MP 1,2</code> - Modus Ponens</li>
+                    <li><code className="bg-gray-900/50 px-1 rounded">:&I 1,2</code> - Conjunction Intro</li>
+                    <li><code className="bg-gray-900/50 px-1 rounded">:R 1</code> - Reiteration</li>
                   </ul>
                 </div>
                 
                 <div>
-                  <p className="font-semibold text-gray-700 dark:text-gray-300 mb-1">Subproofs:</p>
-                  <pre className="bg-white dark:bg-gray-800 p-2 rounded text-xs">
+                  <p className="font-semibold text-gray-300 mb-1">Subproofs:</p>
+                  <pre className="bg-gray-900/50 p-2 rounded text-xs border border-gray-700/50 text-gray-300">
 {`Show P→Q
     P    :AS
     Q    :MP 1,2
@@ -306,19 +309,19 @@ const CarnapFitchEditor: React.FC<CarnapFitchEditorProps> = ({
               <div className="flex gap-2 flex-wrap">
                 <button
                   onClick={() => insertTemplate('Show ')}
-                  className="text-xs px-2 py-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
+                  className="text-xs px-2 py-1 bg-gray-800/30 border border-gray-700 rounded hover:bg-gray-700/30 text-gray-300 hover:text-white transition-colors"
                 >
                   Insert Show
                 </button>
                 <button
                   onClick={() => insertTemplate('    :AS\n')}
-                  className="text-xs px-2 py-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
+                  className="text-xs px-2 py-1 bg-gray-800/30 border border-gray-700 rounded hover:bg-gray-700/30 text-gray-300 hover:text-white transition-colors"
                 >
                   Insert Assumption
                 </button>
                 <button
                   onClick={() => insertTemplate(':CD ')}
-                  className="text-xs px-2 py-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
+                  className="text-xs px-2 py-1 bg-gray-800/30 border border-gray-700 rounded hover:bg-gray-700/30 text-gray-300 hover:text-white transition-colors"
                 >
                   Insert QED
                 </button>
@@ -328,7 +331,7 @@ const CarnapFitchEditor: React.FC<CarnapFitchEditorProps> = ({
         </div>
       )}
       
-      <div className={`border border-gray-300 dark:border-gray-700 ${showSyntaxGuide ? 'rounded-b-lg' : 'rounded-lg'} overflow-hidden`}>
+      <div className={`border border-gray-700 ${showSyntaxGuide ? 'rounded-b-lg' : 'rounded-lg'} overflow-hidden`}>
         <Editor
           height={height}
           language="carnap-fitch"
@@ -338,10 +341,11 @@ const CarnapFitchEditor: React.FC<CarnapFitchEditorProps> = ({
           options={{
             automaticLayout: true,
           }}
+          theme="vs-dark"
         />
         {!readOnly && (
-          <div className="bg-gray-100 dark:bg-gray-800 p-2 flex justify-between items-center">
-            <div className="text-xs text-gray-600 dark:text-gray-400">
+          <div className="bg-gray-800 p-2 flex justify-between items-center">
+            <div className="text-xs text-gray-400">
               Press Tab for indentation • Ctrl+Enter to submit
             </div>
             {onSubmit && (

@@ -39,4 +39,71 @@ body {
   border-left: 2px solid #666;
   margin-left: 2em;
   padding-left: 1em;
+}
+
+/* Tutorial animations */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes highlightFade {
+  0% {
+    background-color: rgba(59, 130, 246, 0.3);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.animate-slideIn {
+  animation: slideIn 0.5s ease-out forwards;
+}
+
+.animate-pulse-slow {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.animate-highlight {
+  animation: highlightFade 2s ease-out forwards;
+}
+
+/* Tutorial specific styles */
+.tutorial-highlight {
+  position: relative;
+  z-index: 10;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.3);
+}
+
+.tutorial-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 40;
+}
+
+/* Drag and drop styles */
+.draggable-item {
+  touch-action: none;
+  user-select: none;
+}
+
+.drag-over {
+  background-color: rgba(59, 130, 246, 0.1);
+  border-color: rgb(59, 130, 246);
 } 

@@ -116,43 +116,47 @@ export default function PracticePage() {
       {puzzle ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div>
-            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-md">
-              <h2 className="text-xl font-semibold mb-4">Puzzle #{puzzle.id}</h2>
+            <div className="bg-gray-800/30 backdrop-blur-sm rounded-lg p-6 border border-gray-700/50">
+              <h2 className="text-xl font-semibold mb-4 text-white">Puzzle #{puzzle.id}</h2>
               <div className="mb-4">
-                <div className="text-sm text-gray-500 dark:text-gray-400">Difficulty: {puzzle.difficulty}</div>
-                <div className="text-sm text-gray-500 dark:text-gray-400">Best known proof length: {puzzle.best_len} lines</div>
+                <div className="text-sm text-gray-400">Difficulty: {puzzle.difficulty}</div>
+                <div className="text-sm text-gray-400">Best known proof length: {puzzle.best_len} lines</div>
               </div>
               
-              <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md mb-4">
-                <div className="font-semibold mb-2">Premises (Γ):</div>
-                <div className="font-mono">{puzzle.gamma}</div>
+              <div className="bg-gray-900/50 p-4 rounded-md mb-4 border border-gray-700/50">
+                <div className="font-semibold mb-2 text-gray-200">Premises (Γ):</div>
+                <div className="font-mono text-gray-300">{puzzle.gamma}</div>
               </div>
               
-              <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md">
-                <div className="font-semibold mb-2">Conclusion (φ):</div>
-                <div className="font-mono">{puzzle.phi}</div>
+              <div className="bg-gray-900/50 p-4 rounded-md border border-gray-700/50">
+                <div className="font-semibold mb-2 text-gray-200">Conclusion (φ):</div>
+                <div className="font-mono text-gray-300">{puzzle.phi}</div>
               </div>
             </div>
             
             {response && (
-              <div className={`mt-4 p-4 rounded-md ${response.verdict ? 'bg-green-100 dark:bg-green-900' : 'bg-red-100 dark:bg-red-900'}`}>
-                <h3 className="font-semibold mb-2">
+              <div className={`mt-4 p-4 rounded-md backdrop-blur-sm border ${
+                response.verdict 
+                  ? 'bg-green-900/20 border-green-600/30' 
+                  : 'bg-red-900/20 border-red-600/30'
+              }`}>
+                <h3 className="font-semibold mb-2 text-white">
                   {response.verdict ? 'Proof Accepted!' : 'Proof Rejected'}
                 </h3>
                 {response.error_message && (
-                  <div className="text-red-600 dark:text-red-400">{response.error_message}</div>
+                  <div className="text-red-400">{response.error_message}</div>
                 )}
-                <div className="text-sm mt-2">
+                <div className="text-sm mt-2 text-gray-400">
                   Processing time: {response.processing_time}ms
                 </div>
                 
                 {response.counter_model && (
                   <div className="mt-2">
-                    <div className="font-semibold">Counter-model:</div>
+                    <div className="font-semibold text-gray-300">Counter-model:</div>
                     <div className="grid grid-cols-3 gap-2 mt-1">
                       {Object.entries(response.counter_model).map(([variable, value]) => (
-                        <div key={variable} className="bg-white dark:bg-gray-800 p-2 rounded">
-                          {variable}: {value ? 'True' : 'False'}
+                        <div key={variable} className="bg-gray-800/50 p-2 rounded border border-gray-700/50">
+                          <span className="font-mono text-gray-300">{variable}: {value ? 'True' : 'False'}</span>
                         </div>
                       ))}
                     </div>
