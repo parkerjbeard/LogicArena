@@ -30,6 +30,42 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Redis client for publishing events
+redis_client = None
+
+async def get_redis_client():
+    """Get or create Redis client"""
+    global redis_client
+    if not redis_client:
+        redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+    return redis_client
+
+async def publish_game_event(event_type: str, data: dict):
+    """Publish a game event to Redis for WebSocket broadcast"""
+    try:
+        client = await get_redis_client()
+        event = {
+            "type": event_type,
+            "timestamp": time.time(),
+            **data
+        }
+        await client.publish("game_events", json.dumps(event))
+        logger.info(f"Published game event: {event_type}")
+    except Exception as e:
+        logger.error(f"Failed to publish game event: {e}")
+
+async def notify_opponent_of_submission(game_id: int, submitter_id: int, opponent_id: int, is_valid: bool):
+    """Notify opponent when a player submits a proof"""
+    try:
+        await publish_game_event("opponent_submission", {
+            "game_id": game_id,
+            "submitter_id": submitter_id,
+            "opponent_id": opponent_id,
+            "is_valid": is_valid
+        })
+    except Exception as e:
+        logger.error(f"Failed to notify opponent: {e}")
+
 @router.get("/", response_model=GameListResponse)
 async def get_games(
     user_id: Optional[int] = None,

@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { duelAPI, puzzleAPI } from '@/lib/api';
 import { useDuelWebSocket } from '@/lib/websocket';
 import CarnapFitchEditor from '@/components/CarnapFitchEditor';
+import { useAuth } from '@/lib/auth/AuthContext';
+import AuthGuard from '@/components/AuthGuard';
 
 // Game type
 type Game = {
@@ -54,8 +56,8 @@ type DuelResponse = {
 };
 
 export default function DuelPage() {
-  // User ID (would come from auth context in a real app)
-  const userId = 1;
+  const { user } = useAuth();
+  const userId = user?.id;
   
   // Match state
   const [inQueue, setInQueue] = useState(false);
@@ -81,7 +83,16 @@ export default function DuelPage() {
   const [difficulty, setDifficulty] = useState<number | undefined>(undefined);
   
   // WebSocket for duel
-  const { isConnected, messages, sendMessage } = useDuelWebSocket(gameId || 0, userId);
+  const { 
+    isConnected, 
+    messages, 
+    sendMessage, 
+    submitProof, 
+    updateTime, 
+    sendChatMessage, 
+    surrender,
+    connectionError 
+  } = useDuelWebSocket(gameId || 0, userId || 0);
   
   // Check for matches periodically
   useEffect(() => {
@@ -183,19 +194,65 @@ export default function DuelPage() {
       
       setPlayerTime((prevTime) => Math.max(0, prevTime - 1));
       
-      // Broadcast time to opponent
-      if (isConnected) {
-        sendMessage({
-          type: 'time_update',
-          user_id: userId,
-          game_id: gameId,
-          time_left: playerTime - 1,
-        });
+      // Broadcast time to opponent using the enhanced method
+      if (isConnected && userId) {
+        updateTime(playerTime - 1);
       }
     }, 1000);
     
     return () => clearInterval(timer);
-  }, [gameId, currentRound, isConnected, sendMessage, playerTime, userId]);
+  }, [gameId, currentRound, isConnected, sendMessage, playerTime, userId, updateTime]);
+  
+  // Handle WebSocket messages
+  useEffect(() => {
+    const latestMessage = messages[messages.length - 1];
+    if (!latestMessage) return;
+    
+    switch (latestMessage.type) {
+      case 'round_complete':
+        // Handle round completion
+        if (latestMessage.round_winner) {
+          setWinner(latestMessage.round_winner);
+          if (latestMessage.game_winner) {
+            setGameComplete(true);
+          }
+        }
+        // Update current round with submission results
+        if (latestMessage.submission) {
+          setCurrentRound(prev => prev ? {
+            ...prev,
+            submissions: [...(prev.submissions || []), latestMessage.submission]
+          } : null);
+        }
+        break;
+      case 'game_complete':
+        // Handle game completion
+        if (latestMessage.game_winner !== undefined) {
+          setWinner(latestMessage.game_winner);
+          setGameComplete(true);
+        }
+        break;
+      case 'time_update':
+        // Handle opponent's time update
+        if (latestMessage.user_id !== userId && latestMessage.time_left !== undefined) {
+          setOpponentTime(latestMessage.time_left);
+        }
+        break;
+      case 'user_joined':
+        console.log(`User ${latestMessage.user_id} joined the game`);
+        break;
+      case 'user_left':
+        console.log(`User ${latestMessage.user_id} left the game`);
+        break;
+      case 'chat_message':
+        // Handle chat messages (could add chat UI later)
+        console.log('Chat message:', latestMessage.message);
+        break;
+      case 'error':
+        console.error('WebSocket error:', latestMessage);
+        break;
+    }
+  }, [messages, userId]);
   
   // Join the matchmaking queue
   const joinQueue = async () => {
@@ -335,10 +392,11 @@ export default function DuelPage() {
   };
   
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-6">Duel Mode</h1>
-      
-      {!gameId ? (
+    <AuthGuard>
+      <div className="container mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold mb-6">Duel Mode</h1>
+        
+        {!gameId ? (
         // Queue view
         <div className="max-w-md mx-auto bg-white dark:bg-gray-800 rounded-lg p-6 shadow-md">
           <h2 className="text-xl font-semibold mb-4">Join a Duel</h2>
@@ -560,6 +618,7 @@ export default function DuelPage() {
           )}
         </div>
       )}
-    </div>
+      </div>
+    </AuthGuard>
   );
 } 

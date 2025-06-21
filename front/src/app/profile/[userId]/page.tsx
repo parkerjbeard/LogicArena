@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { api } from '@/lib/api';
 
 // Type definitions for our data
 interface UserProfile {
@@ -51,28 +52,16 @@ export default function ProfilePage({ params }: { params: { userId: string } }) 
       
       try {
         // Fetch user profile
-        const profileResponse = await fetch(`/api/users/profile/${userId}`);
-        if (!profileResponse.ok) {
-          throw new Error(`Failed to fetch profile: ${profileResponse.statusText}`);
-        }
-        const profileData = await profileResponse.json();
-        setProfile(profileData);
+        const profileResponse = await api.get(`/users/profile/${userId}`);
+        setProfile(profileResponse.data);
         
         // Fetch user stats
-        const statsResponse = await fetch(`/api/users/stats/${userId}`);
-        if (!statsResponse.ok) {
-          throw new Error(`Failed to fetch stats: ${statsResponse.statusText}`);
-        }
-        const statsData = await statsResponse.json();
-        setStats(statsData);
+        const statsResponse = await api.get(`/users/stats/${userId}`);
+        setStats(statsResponse.data);
         
         // Fetch user submissions
-        const submissionsResponse = await fetch(`/api/users/submissions/${userId}?limit=5`);
-        if (!submissionsResponse.ok) {
-          throw new Error(`Failed to fetch submissions: ${submissionsResponse.statusText}`);
-        }
-        const submissionsData = await submissionsResponse.json();
-        setSubmissions(submissionsData);
+        const submissionsResponse = await api.get(`/users/submissions/${userId}?limit=5`);
+        setSubmissions(submissionsResponse.data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
       } finally {

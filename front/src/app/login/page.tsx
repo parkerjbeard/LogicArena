@@ -1,18 +1,49 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { useAuth } from '@/lib/auth/AuthContext';
+import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const { isAuthenticated } = useAuth();
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  
+  useEffect(() => {
+    // Check for error messages
+    const error = searchParams.get('error');
+    if (error) {
+      setErrorMessage(decodeURIComponent(error));
+    }
+    
+    // Redirect if already authenticated
+    const redirect = searchParams.get('redirect');
+    if (isAuthenticated) {
+      router.push(redirect || '/');
+    }
+  }, [searchParams, isAuthenticated, router]);
 
   const handleGoogleLogin = () => {
+    // Check for redirect parameter
+    const redirect = searchParams.get('redirect');
+    const redirectParam = redirect ? `?redirect=${encodeURIComponent(redirect)}` : '';
+    
     // Redirect to the backend Google OAuth endpoint
-    window.location.href = '/api/auth/login/google';
+    window.location.href = `/api/auth/login/google${redirectParam}`;
   };
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center">
       <h1 className="text-3xl font-bold mb-6">Login</h1>
+      
+      {errorMessage && (
+        <div className="mb-4 p-4 bg-red-900/20 backdrop-blur-sm border border-red-600/30 rounded-lg w-full max-w-sm">
+          <p className="text-sm text-red-400">{errorMessage}</p>
+        </div>
+      )}
       
       {/* Placeholder for Email/Password Form */}
       <div className="mb-4 p-4 bg-gray-800/30 backdrop-blur-sm border border-gray-700/50 rounded-lg w-full max-w-sm">

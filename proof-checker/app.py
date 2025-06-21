@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from typing import Optional, List, Dict, Any, Tuple
 import logging
 import subprocess
@@ -30,6 +30,27 @@ class ProofRequest(BaseModel):
     gamma: str  # Premises (comma-separated)
     phi: str    # Conclusion
     proof: str  # Carnap Fitch-style proof
+    
+    @validator('gamma', 'phi', 'proof')
+    def validate_input_content(cls, v):
+        if not v or len(v.strip()) == 0:
+            return v
+        
+        # Prevent potential injection through formula content
+        # Remove null bytes and control characters except newlines/tabs
+        v = ''.join(char for char in v if char.isprintable() or char in '\n\t')
+        
+        # Limit input size to prevent DoS
+        if len(v) > 10000:
+            raise ValueError("Input too long (max 10000 characters)")
+            
+        # Basic sanity check for logical formulas
+        dangerous_patterns = ['../', '~/', '$', '`', '|', ';', '&', '>', '<']
+        for pattern in dangerous_patterns:
+            if pattern in v:
+                raise ValueError(f"Invalid character sequence: {pattern}")
+                
+        return v
 
 class ProofResponse(BaseModel):
     ok: bool
@@ -886,21 +907,31 @@ class CountermodelGenerator:
             # Add negation of conclusion
             self.clauses.extend(self.formula_to_cnf(phi, negate=True))
             
-            # Create DIMACS file
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.cnf', delete=False) as f:
-                f.write(f"p cnf {self.var_count} {len(self.clauses)}\n")
+            # Create DIMACS file with secure temporary file handling
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.cnf', delete=False) as dimacs_f:
+                dimacs_f.write(f"p cnf {self.var_count} {len(self.clauses)}\n")
                 for clause in self.clauses:
-                    f.write(' '.join(map(str, clause)) + ' 0\n')
-                dimacs_file = f.name
+                    dimacs_f.write(' '.join(map(str, clause)) + ' 0\n')
+                dimacs_file = dimacs_f.name
             
-            # Run minisat
-            result_file = dimacs_file + '.result'
+            # Create result file with secure temporary file handling
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.result', delete=False) as result_f:
+                result_file = result_f.name
+            
             try:
+                # Validate file paths are in expected temporary directory
+                temp_dir = tempfile.gettempdir()
+                if not (os.path.commonpath([dimacs_file, temp_dir]) == temp_dir and 
+                        os.path.commonpath([result_file, temp_dir]) == temp_dir):
+                    raise ValueError("Invalid temporary file paths")
+                
+                # Run minisat with validated file paths
                 result = subprocess.run(
                     ['minisat', dimacs_file, result_file],
                     capture_output=True,
                     timeout=5,
-                    text=True
+                    text=True,
+                    check=False  # Don't raise on non-zero exit codes
                 )
                 
                 # Parse result

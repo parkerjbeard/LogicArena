@@ -4,8 +4,9 @@
 CREATE TABLE IF NOT EXISTS "user" (
     id SERIAL PRIMARY KEY,
     handle VARCHAR(30) UNIQUE NOT NULL,
-    pwd_hash VARCHAR(128) NOT NULL,
+    pwd_hash VARCHAR(128),
     email VARCHAR(120) UNIQUE NOT NULL,
+    google_id VARCHAR(255) UNIQUE,
     created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     rating INTEGER NOT NULL DEFAULT 1000,
     is_active BOOLEAN NOT NULL DEFAULT TRUE
@@ -64,6 +65,7 @@ CREATE TABLE IF NOT EXISTS submission (
 CREATE INDEX IF NOT EXISTS idx_user_handle ON "user"(handle);
 CREATE INDEX IF NOT EXISTS idx_user_email ON "user"(email);
 CREATE INDEX IF NOT EXISTS idx_user_rating ON "user"(rating);
+CREATE INDEX IF NOT EXISTS idx_user_google_id ON "user"(google_id);
 CREATE INDEX IF NOT EXISTS idx_puzzle_difficulty ON puzzle(difficulty);
 CREATE INDEX IF NOT EXISTS idx_game_player_a ON game(player_a);
 CREATE INDEX IF NOT EXISTS idx_game_player_b ON game(player_b);

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { api } from '@/lib/api';
 
 interface LeaderboardEntry {
   id: number;
@@ -31,12 +32,8 @@ export default function Leaderboard() {
     const fetchLeaderboard = async () => {
       setIsLoading(true);
       try {
-        const response = await fetch(`/api/users/leaderboard?page=${currentPage}&size=${pageSize}`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch leaderboard data');
-        }
-        const data = await response.json();
-        setLeaderboard(data);
+        const response = await api.get(`/users/leaderboard?page=${currentPage}&size=${pageSize}`);
+        setLeaderboard(response.data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
       } finally {

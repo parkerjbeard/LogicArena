@@ -3,13 +3,12 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import React from 'react';
-
-// TODO: Implement proper token storage (e.g., HttpOnly cookie via API route)
-// TODO: Implement a global auth context to update user state
+import { useAuth } from '@/lib/auth/AuthContext';
 
 export default function GoogleCallbackPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { setAuthToken, refreshAuth } = useAuth();
   const [isProcessing, setIsProcessing] = useState(true);
   const [statusMessage, setStatusMessage] = useState('Processing login...');
 
@@ -33,13 +32,11 @@ export default function GoogleCallbackPage() {
         setStatusMessage('Login successful! Redirecting...');
         
         try {
-          localStorage.setItem('access_token', token);
+          // Use the AuthContext to set the token
+          setAuthToken(token);
           
-          const tokenParts = token.split('.');
-          if (tokenParts.length === 3) {
-            const payload = JSON.parse(atob(tokenParts[1]));
-            console.log('Token payload:', payload);
-          }
+          // Wait for auth refresh
+          await refreshAuth();
           
           setIsProcessing(false);
           
@@ -77,7 +74,7 @@ export default function GoogleCallbackPage() {
 
     processCallback();
     
-  }, [searchParams, router]);
+  }, [searchParams, router, setAuthToken, refreshAuth]);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50">

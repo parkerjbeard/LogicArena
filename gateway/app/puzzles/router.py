@@ -19,13 +19,14 @@ from app.puzzles.schemas import (
 )
 from app.auth.utils import get_current_active_user
 from app.config import settings
-from fastapi_limiter.depends import RateLimiter
+from app.middleware.rate_limiter import RateLimiters
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-@router.get("/", response_model=PuzzleListResponse)
+@router.get("/", response_model=PuzzleListResponse,
+           dependencies=[Depends(RateLimiters.puzzle_list)])
 async def get_puzzles(
     difficulty: Optional[int] = Query(None, ge=1, le=10),
     page: int = Query(1, ge=1),
@@ -122,7 +123,7 @@ async def get_puzzle(
     return puzzle
 
 @router.post("/submit", response_model=ProofResponse, 
-             dependencies=[Depends(RateLimiter(times=settings.RATE_LIMIT_PROOF_SUBMISSIONS, seconds=3600))])
+             dependencies=[Depends(RateLimiters.puzzle_submit)])
 async def submit_proof(
     submission: ProofSubmission,
     background_tasks: BackgroundTasks,

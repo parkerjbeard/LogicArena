@@ -1,12 +1,15 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { authAPI } from '@/lib/api';
+import { useRouter } from 'next/navigation';
 
 interface User {
   id: number;
   handle: string;
   email: string;
   rating: number;
+  is_admin?: boolean;
 }
 
 interface AuthContextType {
@@ -16,6 +19,8 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   register: (handle: string, email: string, password: string) => Promise<boolean>;
+  refreshAuth: () => Promise<void>;
+  setAuthToken: (token: string, refreshToken?: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -23,43 +28,59 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const router = useRouter();
+
+  const refreshAuth = async () => {
+    try {
+      // Check for access token
+      const token = localStorage.getItem('access_token');
+      
+      if (!token) {
+        setUser(null);
+        setIsLoading(false);
+        return;
+      }
+
+      const userData = await authAPI.getCurrentUser();
+      setUser(userData);
+    } catch (error) {
+      console.error('Authentication check failed:', error);
+      // Clear invalid tokens
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      setUser(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    // Check if user is already logged in
-    const checkAuth = async () => {
-      try {
-        const response = await fetch('/api/auth/me');
-        if (response.ok) {
-          const userData = await response.json();
-          setUser(userData);
-        }
-      } catch (error) {
-        console.error('Authentication check failed:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    checkAuth();
+    refreshAuth();
   }, []);
+
+  const setAuthToken = (token: string, refreshToken?: string) => {
+    // Store tokens consistently
+    localStorage.setItem('access_token', token);
+    if (refreshToken) {
+      localStorage.setItem('refresh_token', refreshToken);
+    }
+    // Immediately refresh user data
+    refreshAuth();
+  };
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-      });
-
-      if (!response.ok) {
-        return false;
+      const data = await authAPI.login(email, password);
+      
+      if (data.access_token) {
+        setAuthToken(data.access_token, data.refresh_token);
+        if (data.user) {
+          setUser(data.user);
+        }
+        return true;
       }
-
-      const userData = await response.json();
-      setUser(userData);
-      return true;
+      
+      return false;
     } catch (error) {
       console.error('Login failed:', error);
       return false;
@@ -68,10 +89,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-      });
+      // Clear tokens
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
       setUser(null);
+      
+      // Redirect to home
+      router.push('/');
     } catch (error) {
       console.error('Logout failed:', error);
     }
@@ -79,21 +103,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (handle: string, email: string, password: string): Promise<boolean> => {
     try {
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ handle, email, password }),
-      });
-
-      if (!response.ok) {
-        return false;
+      const data = await authAPI.register(handle, email, password);
+      
+      if (data.access_token) {
+        setAuthToken(data.access_token, data.refresh_token);
+        if (data.user) {
+          setUser(data.user);
+        }
+        return true;
       }
-
-      const userData = await response.json();
-      setUser(userData);
-      return true;
+      
+      return false;
     } catch (error) {
       console.error('Registration failed:', error);
       return false;
@@ -109,6 +129,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         register,
+        refreshAuth,
+        setAuthToken,
       }}
     >
       {children}

@@ -162,4 +162,43 @@ async def get_current_active_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Inactive user"
         )
-    return current_user 
+    return current_user
+
+async def get_current_admin_user(
+    current_user: User = Depends(get_current_active_user)
+) -> User:
+    """Get the current admin user"""
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    return current_user
+
+def verify_token(token: str) -> Optional[str]:
+    """
+    Verify JWT token and return user ID
+    Used for WebSocket authentication where we can't use dependencies
+    
+    Returns:
+        User ID if token is valid, None otherwise
+    """
+    try:
+        payload = jwt.decode(
+            token, 
+            settings.JWT_SECRET, 
+            algorithms=[settings.JWT_ALGORITHM],
+            audience="logicarena-client",
+            issuer="logicarena-api",
+            options={
+                "require": ["exp", "iat", "sub", "jti"],
+                "verify_exp": True,
+                "verify_iat": True,
+                "verify_aud": True,
+                "verify_iss": True
+            }
+        )
+        user_id: str = payload.get("sub")
+        return user_id
+    except (jwt.InvalidTokenError, jwt.ExpiredSignatureError, jwt.InvalidSignatureError):
+        return None 

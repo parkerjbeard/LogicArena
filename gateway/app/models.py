@@ -16,6 +16,7 @@ class User(Base):
     created = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
     rating = Column(Integer, default=1000, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
+    is_admin = Column(Boolean, default=False, nullable=False)
     
     # Relationships
     submissions = relationship("Submission", back_populates="user")
@@ -23,6 +24,7 @@ class User(Base):
     games_as_player_b = relationship("Game", foreign_keys="Game.player_b", back_populates="player_b_user")
     won_rounds = relationship("Round", foreign_keys="Round.winner", back_populates="winner_user")
     won_games = relationship("Game", foreign_keys="Game.winner", back_populates="winner_user")
+    login_activities = relationship("LoginActivity", back_populates="user")
 
 class Puzzle(Base):
     __tablename__ = "puzzle"
@@ -94,4 +96,19 @@ class Submission(Base):
     user = relationship("User", back_populates="submissions")
     puzzle = relationship("Puzzle", back_populates="submissions")
     game = relationship("Game", back_populates="submissions")
-    round = relationship("Round", back_populates="submissions") 
+    round = relationship("Round", back_populates="submissions")
+
+class LoginActivity(Base):
+    __tablename__ = "login_activity"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("user.id"), nullable=False)
+    login_type = Column(String(20), nullable=False)  # 'standard' or 'google'
+    ip_address = Column(String(45))  # IPv6 max length
+    user_agent = Column(String(255))
+    success = Column(Boolean, default=True, nullable=False)
+    error_message = Column(String(255))
+    created = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    
+    # Relationships
+    user = relationship("User", back_populates="login_activities") 

@@ -11,7 +11,7 @@ from authlib.integrations.starlette_client import OAuth, OAuthError
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadTimeSignature
 
 from app.db.session import get_db
-from app.models import User
+from app.models import User, LoginActivity
 from app.auth.schemas import Token, UserCreate, UserResponse, UserLogin, CompleteProfileRequest, RefreshTokenRequest
 from app.auth.utils import (
     get_password_hash, 
@@ -22,7 +22,7 @@ from app.auth.utils import (
     get_current_active_user
 )
 from app.config import settings
-from fastapi_limiter.depends import RateLimiter
+from app.middleware.rate_limiter import RateLimiters
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ oauth.register(
 temp_serializer = URLSafeTimedSerializer(settings.SECRET_KEY, salt='google-register-temp')
 
 @router.post("/register", response_model=UserResponse, 
-            dependencies=[Depends(RateLimiter(times=settings.RATE_LIMIT_ACCOUNT_CREATION, seconds=86400))])
+            dependencies=[Depends(RateLimiters.register)])
 async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     """Register a new user"""
     # Check if email already exists
@@ -83,20 +83,49 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     
     return new_user
 
-@router.post("/login", response_model=Token)
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
+@router.post("/login", response_model=Token,
+            dependencies=[Depends(RateLimiters.login)])
+async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
     """Login and get JWT token"""
     # Find user by username (which is email in our case)
     result = await db.execute(select(User).filter(User.email == form_data.username))
     user = result.scalars().first()
     
+    # Track login attempt
+    client_ip = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent", "")
+    
     # Validate user and password
     if not user or not verify_password(form_data.password, user.pwd_hash):
+        # Track failed login attempt if user exists
+        if user:
+            login_activity = LoginActivity(
+                user_id=user.id,
+                login_type="standard",
+                ip_address=client_ip,
+                user_agent=user_agent[:255],
+                success=False,
+                error_message="Invalid password"
+            )
+            db.add(login_activity)
+            await db.commit()
+        
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
+    # Track successful login
+    login_activity = LoginActivity(
+        user_id=user.id,
+        login_type="standard",
+        ip_address=client_ip,
+        user_agent=user_agent[:255],
+        success=True
+    )
+    db.add(login_activity)
+    await db.commit()
     
     # Create access and refresh tokens
     access_token = create_access_token(
@@ -114,20 +143,49 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
         "expires_in": settings.JWT_EXPIRATION_MINUTES * 60
     }
 
-@router.post("/login/email", response_model=Token)
-async def login_with_email(login_data: UserLogin, db: AsyncSession = Depends(get_db)):
+@router.post("/login/email", response_model=Token,
+            dependencies=[Depends(RateLimiters.login)])
+async def login_with_email(request: Request, login_data: UserLogin, db: AsyncSession = Depends(get_db)):
     """Login with email and password"""
     # Find user by email
     result = await db.execute(select(User).filter(User.email == login_data.email))
     user = result.scalars().first()
     
+    # Track login attempt
+    client_ip = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent", "")
+    
     # Validate user and password
     if not user or not verify_password(login_data.password, user.pwd_hash):
+        # Track failed login attempt if user exists
+        if user:
+            login_activity = LoginActivity(
+                user_id=user.id,
+                login_type="standard",
+                ip_address=client_ip,
+                user_agent=user_agent[:255],
+                success=False,
+                error_message="Invalid password"
+            )
+            db.add(login_activity)
+            await db.commit()
+        
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
+    # Track successful login
+    login_activity = LoginActivity(
+        user_id=user.id,
+        login_type="standard",
+        ip_address=client_ip,
+        user_agent=user_agent[:255],
+        success=True
+    )
+    db.add(login_activity)
+    await db.commit()
     
     # Create access and refresh tokens
     access_token = create_access_token(
@@ -145,7 +203,8 @@ async def login_with_email(login_data: UserLogin, db: AsyncSession = Depends(get
         "expires_in": settings.JWT_EXPIRATION_MINUTES * 60
     }
 
-@router.post("/refresh", response_model=Token)
+@router.post("/refresh", response_model=Token,
+            dependencies=[Depends(RateLimiters.refresh)])
 async def refresh_access_token(refresh_data: RefreshTokenRequest, db: AsyncSession = Depends(get_db)):
     """Refresh access token using refresh token"""
     # Verify refresh token
@@ -263,6 +322,20 @@ async def auth_via_google(request: Request, db: AsyncSession = Depends(get_db)):
     user = result.scalars().first()
 
     if user:
+        # Track successful login
+        client_ip = request.client.host if request.client else None
+        user_agent = request.headers.get("user-agent", "")
+        
+        login_activity = LoginActivity(
+            user_id=user.id,
+            login_type="google",
+            ip_address=client_ip,
+            user_agent=user_agent[:255],
+            success=True
+        )
+        db.add(login_activity)
+        await db.commit()
+        
         # User exists, log them in
         access_token = create_access_token(
             data={"sub": str(user.id)},
@@ -351,7 +424,8 @@ async def complete_google_registration(profile_data: CompleteProfileRequest, db:
         "expires_in": settings.JWT_EXPIRATION_MINUTES * 60
     }
 
-@router.post("/refresh", response_model=Token)
+@router.post("/refresh", response_model=Token,
+            dependencies=[Depends(RateLimiters.refresh)])
 async def refresh_access_token(refresh_data: RefreshTokenRequest, db: AsyncSession = Depends(get_db)):
     """Refresh access token using refresh token"""
     # Verify refresh token

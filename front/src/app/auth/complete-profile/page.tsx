@@ -2,17 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import axios from 'axios'; // Assuming axios is used for API calls
-
-// TODO: Define API base URL properly (e.g., from environment variables)
-const API_BASE_URL = 'http://localhost:8000'; // Adjust if your gateway runs elsewhere
-
-// TODO: Implement proper token storage (e.g., HttpOnly cookie via API route)
-// TODO: Implement a global auth context to update user state
+import { useAuth } from '@/lib/auth/AuthContext';
+import api from '@/lib/api';
 
 export default function CompleteProfilePage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { setAuthToken } = useAuth();
   const [handle, setHandle] = useState('');
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +36,7 @@ export default function CompleteProfilePage() {
     setError(null);
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/api/auth/complete-profile`, {
+      const response = await api.post('/api/auth/complete-profile', {
         token: token,
         handle: handle,
       });
@@ -48,11 +44,11 @@ export default function CompleteProfilePage() {
       const { access_token } = response.data;
 
       if (access_token) {
-        // Store the token (using localStorage for simplicity, replace with secure method)
-        localStorage.setItem('jwt_token', access_token);
-        // TODO: Update global auth state
-        // Redirect to dashboard or home page
-        router.push('/dashboard'); // Adjust this route as needed
+        // Use auth context to store token
+        setAuthToken(access_token);
+        
+        // Redirect to home page
+        router.push('/');
       } else {
         throw new Error('No access token received from server.');
       }

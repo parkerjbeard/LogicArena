@@ -1,9 +1,11 @@
 import asyncio
 import os
+import sys
 import psycopg2
 import psycopg2.extras
 import logging
 from app.auth.utils import get_password_hash
+from app.migrations import MigrationRunner
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -71,10 +73,11 @@ def execute_sql_file(conn, filepath):
             cur.execute(sql)
 
 def create_tables(conn):
-    """Create database tables from schema."""
-    logger.info("Creating database tables...")
-    execute_sql_file(conn, 'schema.sql')
-    logger.info("Database tables created successfully")
+    """Create database tables using migrations."""
+    logger.info("Running database migrations...")
+    runner = MigrationRunner()
+    runner.run_migrations()
+    logger.info("Database migrations completed successfully")
 
 def create_sample_users(conn):
     """Create sample users."""

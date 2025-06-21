@@ -45,6 +45,45 @@ LogicArena is built as a microservices application with the following components
    docker-compose exec gateway python init_db.py
    ```
 
+### Database Migrations
+
+LogicArena uses a migration system to manage database schema changes. 
+
+#### Running Migrations
+
+To apply all pending migrations:
+```bash
+docker-compose exec gateway python migrate.py migrate
+```
+
+#### Creating a New Migration
+
+To create a new migration file:
+```bash
+docker-compose exec gateway python migrate.py create "Add new feature"
+```
+
+This creates a timestamped migration file in `gateway/migrations/`.
+
+#### Rolling Back Migrations
+
+To rollback the last migration:
+```bash
+docker-compose exec gateway python migrate.py rollback
+```
+
+To rollback a specific migration:
+```bash
+docker-compose exec gateway python migrate.py rollback 20250106_000001_add_google_auth
+```
+
+#### Checking Migration Status
+
+To see which migrations have been applied:
+```bash
+docker-compose exec gateway python migrate.py status
+```
+
 4. Access the application at http://localhost:3000
 
 ### Development
