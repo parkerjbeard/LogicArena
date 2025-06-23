@@ -2,6 +2,15 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 
+// Connection states
+export enum ConnectionState {
+  DISCONNECTED = 'disconnected',
+  CONNECTING = 'connecting',
+  CONNECTED = 'connected',
+  RECONNECTING = 'reconnecting',
+  FAILED = 'failed'
+}
+
 interface DuelMessage {
   type: string;
   user_id?: number;
@@ -34,28 +43,63 @@ interface NotificationMessage {
   change?: number;
 }
 
-export function useDuelWebSocket(gameId: number, userId: number) {
-  const [isConnected, setIsConnected] = useState(false);
+// Configuration for reconnection logic
+interface ReconnectionConfig {
+  maxAttempts: number;
+  initialDelay: number;
+  maxDelay: number;
+  backoffMultiplier: number;
+}
+
+const defaultReconnectionConfig: ReconnectionConfig = {
+  maxAttempts: 10,
+  initialDelay: 1000, // 1 second
+  maxDelay: 30000, // 30 seconds
+  backoffMultiplier: 1.5
+};
+
+export function useDuelWebSocket(gameId: number, userId: number, config?: Partial<ReconnectionConfig>) {
+  const reconnectConfig = { ...defaultReconnectionConfig, ...config };
+  const [connectionState, setConnectionState] = useState<ConnectionState>(ConnectionState.DISCONNECTED);
   const [messages, setMessages] = useState<DuelMessage[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttempts = useRef(0);
-  const maxReconnectAttempts = 5;
-  const reconnectDelay = 3000; // 3 seconds
+  const currentReconnectDelay = useRef(reconnectConfig.initialDelay);
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const messageQueueRef = useRef<Array<Omit<DuelMessage, 'timestamp'>>>([]);
+  const lastHeartbeatRef = useRef<number>(Date.now());
+  const missedHeartbeatsRef = useRef(0);
+  const intentionalDisconnect = useRef(false);
+  
+  // Derived state for backwards compatibility
+  const isConnected = connectionState === ConnectionState.CONNECTED;
 
   const startHeartbeat = useCallback(() => {
     if (heartbeatIntervalRef.current) {
       clearInterval(heartbeatIntervalRef.current);
     }
     
+    lastHeartbeatRef.current = Date.now();
+    missedHeartbeatsRef.current = 0;
+    
     heartbeatIntervalRef.current = setInterval(() => {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        const now = Date.now();
+        
+        // Check if we've missed too many heartbeats
+        if (now - lastHeartbeatRef.current > 90000) { // 90 seconds = 3 missed heartbeats
+          console.warn('Missed too many heartbeats, forcing reconnection');
+          wsRef.current.close();
+          return;
+        }
+        
         wsRef.current.send(JSON.stringify({
           type: 'ping',
-          timestamp: Date.now()
+          timestamp: now
         }));
+        missedHeartbeatsRef.current++;
       }
     }, 30000); // Ping every 30 seconds
   }, []);
@@ -67,25 +111,53 @@ export function useDuelWebSocket(gameId: number, userId: number) {
     }
   }, []);
 
+  const flushMessageQueue = useCallback(() => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      while (messageQueueRef.current.length > 0) {
+        const message = messageQueueRef.current.shift();
+        if (message) {
+          const messageWithTimestamp = {
+            ...message,
+            timestamp: Date.now()
+          };
+          wsRef.current.send(JSON.stringify(messageWithTimestamp));
+        }
+      }
+    }
+  }, []);
+
   const connect = useCallback(() => {
     if (!gameId || !userId) return;
+    
+    // Don't connect if we're already connecting or connected
+    if (connectionState === ConnectionState.CONNECTING || connectionState === ConnectionState.CONNECTED) {
+      return;
+    }
 
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       if (!token) {
         setConnectionError('No authentication token found');
+        setConnectionState(ConnectionState.FAILED);
         return;
       }
+      
+      setConnectionState(reconnectAttempts.current > 0 ? ConnectionState.RECONNECTING : ConnectionState.CONNECTING);
+      setConnectionError(null);
 
       const wsUrl = `ws://localhost:8000/ws/duel/${gameId}?token=${encodeURIComponent(token)}`;
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
         console.log('WebSocket connected for duel');
-        setIsConnected(true);
+        setConnectionState(ConnectionState.CONNECTED);
         setConnectionError(null);
         reconnectAttempts.current = 0;
+        currentReconnectDelay.current = reconnectConfig.initialDelay;
         startHeartbeat();
+        
+        // Flush any queued messages
+        flushMessageQueue();
       };
 
       ws.onmessage = (event) => {
@@ -94,6 +166,8 @@ export function useDuelWebSocket(gameId: number, userId: number) {
           
           // Handle pong responses (don't add to messages)
           if (message.type === 'pong') {
+            lastHeartbeatRef.current = Date.now();
+            missedHeartbeatsRef.current = 0;
             return;
           }
           
@@ -128,27 +202,50 @@ export function useDuelWebSocket(gameId: number, userId: number) {
         }
       };
 
-      ws.onclose = () => {
-        console.log('WebSocket disconnected from duel');
-        setIsConnected(false);
+      ws.onclose = (event) => {
+        console.log('WebSocket disconnected from duel', { code: event.code, reason: event.reason });
+        setConnectionState(ConnectionState.DISCONNECTED);
         wsRef.current = null;
         stopHeartbeat();
 
+        // Don't reconnect if it was an intentional disconnect
+        if (intentionalDisconnect.current) {
+          intentionalDisconnect.current = false;
+          return;
+        }
+
         // Attempt to reconnect if we haven't exceeded max attempts
-        if (reconnectAttempts.current < maxReconnectAttempts) {
+        if (reconnectAttempts.current < reconnectConfig.maxAttempts) {
           reconnectAttempts.current++;
+          setConnectionState(ConnectionState.RECONNECTING);
+          
+          // Calculate exponential backoff delay
+          const delay = Math.min(
+            currentReconnectDelay.current,
+            reconnectConfig.maxDelay
+          );
+          
+          console.log(`Attempting to reconnect in ${delay}ms... (${reconnectAttempts.current}/${reconnectConfig.maxAttempts})`);
+          
           reconnectTimeoutRef.current = setTimeout(() => {
-            console.log(`Attempting to reconnect... (${reconnectAttempts.current}/${maxReconnectAttempts})`);
             connect();
-          }, reconnectDelay);
+          }, delay);
+          
+          // Increase delay for next attempt
+          currentReconnectDelay.current = Math.min(
+            currentReconnectDelay.current * reconnectConfig.backoffMultiplier,
+            reconnectConfig.maxDelay
+          );
         } else {
           setConnectionError('Failed to reconnect after multiple attempts');
+          setConnectionState(ConnectionState.FAILED);
         }
       };
 
       ws.onerror = (error) => {
         console.error('WebSocket error:', error);
         setConnectionError('WebSocket connection error');
+        // The error event is always followed by a close event
       };
 
       wsRef.current = ws;
@@ -156,9 +253,11 @@ export function useDuelWebSocket(gameId: number, userId: number) {
       console.error('Failed to create WebSocket connection:', error);
       setConnectionError('Failed to create WebSocket connection');
     }
-  }, [gameId, userId, startHeartbeat, stopHeartbeat]);
+  }, [gameId, userId, connectionState, startHeartbeat, stopHeartbeat, flushMessageQueue, reconnectConfig]);
 
   const disconnect = useCallback(() => {
+    intentionalDisconnect.current = true;
+    
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
@@ -171,9 +270,11 @@ export function useDuelWebSocket(gameId: number, userId: number) {
       wsRef.current = null;
     }
     
-    setIsConnected(false);
-    reconnectAttempts.current = maxReconnectAttempts; // Prevent reconnection
-  }, [stopHeartbeat]);
+    setConnectionState(ConnectionState.DISCONNECTED);
+    reconnectAttempts.current = 0;
+    currentReconnectDelay.current = reconnectConfig.initialDelay;
+    messageQueueRef.current = [];
+  }, [stopHeartbeat, reconnectConfig]);
 
   const sendMessage = useCallback((message: Omit<DuelMessage, 'timestamp'>) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -183,9 +284,16 @@ export function useDuelWebSocket(gameId: number, userId: number) {
       };
       wsRef.current.send(JSON.stringify(messageWithTimestamp));
     } else {
-      console.warn('WebSocket is not connected. Cannot send message:', message);
+      console.warn('WebSocket is not connected. Queueing message:', message);
+      // Queue the message for later delivery
+      messageQueueRef.current.push(message);
+      
+      // If we're disconnected and not already reconnecting, trigger a reconnection
+      if (connectionState === ConnectionState.DISCONNECTED || connectionState === ConnectionState.FAILED) {
+        connect();
+      }
     }
-  }, []);
+  }, [connectionState, connect]);
 
   // Helper functions for common message types
   const submitProof = useCallback((proof: any) => {
@@ -228,8 +336,16 @@ export function useDuelWebSocket(gameId: number, userId: number) {
     return disconnect;
   }, [connect, disconnect]);
 
+  const resetConnection = useCallback(() => {
+    disconnect();
+    reconnectAttempts.current = 0;
+    currentReconnectDelay.current = reconnectConfig.initialDelay;
+    setTimeout(() => connect(), 100);
+  }, [disconnect, connect, reconnectConfig]);
+
   return {
     isConnected,
+    connectionState,
     messages,
     connectionError,
     sendMessage,
@@ -237,33 +353,54 @@ export function useDuelWebSocket(gameId: number, userId: number) {
     updateTime,
     sendChatMessage,
     surrender,
-    reconnect: connect,
-    disconnect
+    reconnect: resetConnection,
+    disconnect,
+    messageQueueSize: messageQueueRef.current.length
   };
 }
 
-export function useNotificationsWebSocket(userId: number) {
-  const [isConnected, setIsConnected] = useState(false);
+export function useNotificationsWebSocket(userId: number, config?: Partial<ReconnectionConfig>) {
+  const reconnectConfig = { ...defaultReconnectionConfig, ...config };
+  const [connectionState, setConnectionState] = useState<ConnectionState>(ConnectionState.DISCONNECTED);
   const [notifications, setNotifications] = useState<NotificationMessage[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttempts = useRef(0);
-  const maxReconnectAttempts = 5;
-  const reconnectDelay = 3000;
+  const currentReconnectDelay = useRef(reconnectConfig.initialDelay);
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const messageQueueRef = useRef<Array<Omit<NotificationMessage, 'timestamp'>>>([]);
+  const lastHeartbeatRef = useRef<number>(Date.now());
+  const missedHeartbeatsRef = useRef(0);
+  const intentionalDisconnect = useRef(false);
+  
+  // Derived state for backwards compatibility
+  const isConnected = connectionState === ConnectionState.CONNECTED;
 
   const startHeartbeat = useCallback(() => {
     if (heartbeatIntervalRef.current) {
       clearInterval(heartbeatIntervalRef.current);
     }
     
+    lastHeartbeatRef.current = Date.now();
+    missedHeartbeatsRef.current = 0;
+    
     heartbeatIntervalRef.current = setInterval(() => {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        const now = Date.now();
+        
+        // Check if we've missed too many heartbeats
+        if (now - lastHeartbeatRef.current > 90000) { // 90 seconds = 3 missed heartbeats
+          console.warn('Missed too many heartbeats, forcing reconnection');
+          wsRef.current.close();
+          return;
+        }
+        
         wsRef.current.send(JSON.stringify({
           type: 'ping',
-          timestamp: Date.now()
+          timestamp: now
         }));
+        missedHeartbeatsRef.current++;
       }
     }, 30000);
   }, []);
@@ -275,25 +412,53 @@ export function useNotificationsWebSocket(userId: number) {
     }
   }, []);
 
+  const flushMessageQueue = useCallback(() => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      while (messageQueueRef.current.length > 0) {
+        const message = messageQueueRef.current.shift();
+        if (message) {
+          const messageWithTimestamp = {
+            ...message,
+            timestamp: Date.now()
+          };
+          wsRef.current.send(JSON.stringify(messageWithTimestamp));
+        }
+      }
+    }
+  }, []);
+
   const connect = useCallback(() => {
     if (!userId) return;
+    
+    // Don't connect if we're already connecting or connected
+    if (connectionState === ConnectionState.CONNECTING || connectionState === ConnectionState.CONNECTED) {
+      return;
+    }
 
     try {
       const token = localStorage.getItem('access_token') || localStorage.getItem('token');
       if (!token) {
         setConnectionError('No authentication token found');
+        setConnectionState(ConnectionState.FAILED);
         return;
       }
+      
+      setConnectionState(reconnectAttempts.current > 0 ? ConnectionState.RECONNECTING : ConnectionState.CONNECTING);
+      setConnectionError(null);
 
       const wsUrl = `ws://localhost:8000/ws/notifications/${userId}?token=${encodeURIComponent(token)}`;
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
         console.log('WebSocket connected for notifications');
-        setIsConnected(true);
+        setConnectionState(ConnectionState.CONNECTED);
         setConnectionError(null);
         reconnectAttempts.current = 0;
+        currentReconnectDelay.current = reconnectConfig.initialDelay;
         startHeartbeat();
+        
+        // Flush any queued messages
+        flushMessageQueue();
       };
 
       ws.onmessage = (event) => {
@@ -302,6 +467,8 @@ export function useNotificationsWebSocket(userId: number) {
           
           // Handle pong responses
           if (notification.type === 'pong') {
+            lastHeartbeatRef.current = Date.now();
+            missedHeartbeatsRef.current = 0;
             return;
           }
           
@@ -334,26 +501,50 @@ export function useNotificationsWebSocket(userId: number) {
         }
       };
 
-      ws.onclose = () => {
-        console.log('WebSocket disconnected from notifications');
-        setIsConnected(false);
+      ws.onclose = (event) => {
+        console.log('WebSocket disconnected from notifications', { code: event.code, reason: event.reason });
+        setConnectionState(ConnectionState.DISCONNECTED);
         wsRef.current = null;
         stopHeartbeat();
 
-        if (reconnectAttempts.current < maxReconnectAttempts) {
+        // Don't reconnect if it was an intentional disconnect
+        if (intentionalDisconnect.current) {
+          intentionalDisconnect.current = false;
+          return;
+        }
+
+        // Attempt to reconnect if we haven't exceeded max attempts
+        if (reconnectAttempts.current < reconnectConfig.maxAttempts) {
           reconnectAttempts.current++;
+          setConnectionState(ConnectionState.RECONNECTING);
+          
+          // Calculate exponential backoff delay
+          const delay = Math.min(
+            currentReconnectDelay.current,
+            reconnectConfig.maxDelay
+          );
+          
+          console.log(`Attempting to reconnect notifications in ${delay}ms... (${reconnectAttempts.current}/${reconnectConfig.maxAttempts})`);
+          
           reconnectTimeoutRef.current = setTimeout(() => {
-            console.log(`Attempting to reconnect notifications... (${reconnectAttempts.current}/${maxReconnectAttempts})`);
             connect();
-          }, reconnectDelay);
+          }, delay);
+          
+          // Increase delay for next attempt
+          currentReconnectDelay.current = Math.min(
+            currentReconnectDelay.current * reconnectConfig.backoffMultiplier,
+            reconnectConfig.maxDelay
+          );
         } else {
           setConnectionError('Failed to reconnect notifications after multiple attempts');
+          setConnectionState(ConnectionState.FAILED);
         }
       };
 
       ws.onerror = (error) => {
         console.error('Notifications WebSocket error:', error);
         setConnectionError('Notifications WebSocket connection error');
+        // The error event is always followed by a close event
       };
 
       wsRef.current = ws;
@@ -361,9 +552,11 @@ export function useNotificationsWebSocket(userId: number) {
       console.error('Failed to create notifications WebSocket connection:', error);
       setConnectionError('Failed to create notifications WebSocket connection');
     }
-  }, [userId, startHeartbeat, stopHeartbeat]);
+  }, [userId, connectionState, startHeartbeat, stopHeartbeat, flushMessageQueue, reconnectConfig]);
 
   const disconnect = useCallback(() => {
+    intentionalDisconnect.current = true;
+    
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
@@ -376,9 +569,11 @@ export function useNotificationsWebSocket(userId: number) {
       wsRef.current = null;
     }
     
-    setIsConnected(false);
-    reconnectAttempts.current = maxReconnectAttempts;
-  }, [stopHeartbeat]);
+    setConnectionState(ConnectionState.DISCONNECTED);
+    reconnectAttempts.current = 0;
+    currentReconnectDelay.current = reconnectConfig.initialDelay;
+    messageQueueRef.current = [];
+  }, [stopHeartbeat, reconnectConfig]);
 
   const sendMessage = useCallback((message: Omit<NotificationMessage, 'timestamp'>) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -387,8 +582,17 @@ export function useNotificationsWebSocket(userId: number) {
         timestamp: Date.now()
       };
       wsRef.current.send(JSON.stringify(messageWithTimestamp));
+    } else {
+      console.warn('WebSocket is not connected. Queueing message:', message);
+      // Queue the message for later delivery
+      messageQueueRef.current.push(message);
+      
+      // If we're disconnected and not already reconnecting, trigger a reconnection
+      if (connectionState === ConnectionState.DISCONNECTED || connectionState === ConnectionState.FAILED) {
+        connect();
+      }
     }
-  }, []);
+  }, [connectionState, connect]);
 
   const markNotificationsRead = useCallback((notificationIds: number[]) => {
     sendMessage({
@@ -410,13 +614,22 @@ export function useNotificationsWebSocket(userId: number) {
     }
   }, [isConnected]);
 
+  const resetConnection = useCallback(() => {
+    disconnect();
+    reconnectAttempts.current = 0;
+    currentReconnectDelay.current = reconnectConfig.initialDelay;
+    setTimeout(() => connect(), 100);
+  }, [disconnect, connect, reconnectConfig]);
+
   return {
     isConnected,
+    connectionState,
     notifications,
     connectionError,
     sendMessage,
     markNotificationsRead,
-    reconnect: connect,
-    disconnect
+    reconnect: resetConnection,
+    disconnect,
+    messageQueueSize: messageQueueRef.current.length
   };
 }

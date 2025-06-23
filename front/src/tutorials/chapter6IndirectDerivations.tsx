@@ -105,7 +105,7 @@ export const chapter6IndirectDerivationsSteps: TutorialStep[] = [
             initialLines={[
               { lineNumber: 1, formula: 'P → Q', justification: 'Premise', depth: 0 },
               { lineNumber: 2, formula: '¬P → ¬Q', justification: 'Premise', depth: 0 },
-              { lineNumber: 3, formula: '¬Q', justification: 'Assumption (for ID)', depth: 1, isAssumption: true },
+              { lineNumber: 3, formula: '¬Q', justification: 'Assumption (for ID)', depth: 1 },
               { lineNumber: 4, formula: '¬P', justification: 'MT 1,3', depth: 1 },
               { lineNumber: 5, formula: '¬Q', justification: 'MP 2,4', depth: 1 },
               { lineNumber: 6, formula: 'Q', justification: 'ID 3-5', depth: 0, isValid: true }
@@ -125,7 +125,7 @@ export const chapter6IndirectDerivationsSteps: TutorialStep[] = [
             initialLines={[
               { lineNumber: 1, formula: 'P ∨ Q', justification: 'Premise', depth: 0 },
               { lineNumber: 2, formula: '¬P', justification: 'Premise', depth: 0 },
-              { lineNumber: 3, formula: '¬Q', justification: 'Assumption (for ID)', depth: 1, isAssumption: true },
+              { lineNumber: 3, formula: '¬Q', justification: 'Assumption (for ID)', depth: 1 },
               { lineNumber: 4, formula: '¬P ∧ ¬Q', justification: 'Conj 2,3', depth: 1 },
               { lineNumber: 5, formula: '¬(P ∨ Q)', justification: 'DeMorgan 4', depth: 1 },
               { lineNumber: 6, formula: 'P ∨ Q', justification: 'Reit 1', depth: 1 },
@@ -227,7 +227,7 @@ export const chapter6IndirectDerivationsSteps: TutorialStep[] = [
             initialLines={[
               { lineNumber: 1, formula: 'P → (R ∧ S)', justification: 'Premise', depth: 0 },
               { lineNumber: 2, formula: 'S → Q', justification: 'Premise', depth: 0 },
-              { lineNumber: 3, formula: '¬(P → Q)', justification: 'Assumption (for ID)', depth: 1, isAssumption: true },
+              { lineNumber: 3, formula: '¬(P → Q)', justification: 'Assumption (for ID)', depth: 1 },
               { lineNumber: 4, formula: 'P ∧ ¬Q', justification: 'Neg Cond 3', depth: 1 },
               { lineNumber: 5, formula: 'P', justification: 'Simp 4', depth: 1 },
               { lineNumber: 6, formula: '¬Q', justification: 'Simp 4', depth: 1 },
@@ -275,8 +275,8 @@ export const chapter6IndirectDerivationsSteps: TutorialStep[] = [
             initialLines={[
               { lineNumber: 1, formula: 'P → (Q ∨ R)', justification: 'Premise', depth: 0 },
               { lineNumber: 2, formula: 'P → ¬R', justification: 'Premise', depth: 0 },
-              { lineNumber: 3, formula: 'P', justification: 'Assumption (for CD)', depth: 1, isAssumption: true },
-              { lineNumber: 4, formula: '¬Q', justification: 'Assumption (for ID)', depth: 2, isAssumption: true },
+              { lineNumber: 3, formula: 'P', justification: 'Assumption (for CD)', depth: 1 },
+              { lineNumber: 4, formula: '¬Q', justification: 'Assumption (for ID)', depth: 2 },
               { lineNumber: 5, formula: 'Q ∨ R', justification: 'MP 1,3', depth: 2 },
               { lineNumber: 6, formula: '¬R', justification: 'MP 2,3', depth: 2 },
               { lineNumber: 7, formula: 'R', justification: 'DS 5,4', depth: 2 },

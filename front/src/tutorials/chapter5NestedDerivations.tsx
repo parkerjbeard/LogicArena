@@ -109,9 +109,9 @@ export const chapter5NestedDerivationsSteps: TutorialStep[] = [
           <InteractiveProofEditor
             initialLines={[
               { lineNumber: 1, formula: 'P → (Q ∧ R)', justification: 'Premise', depth: 0 },
-              { lineNumber: 2, formula: 'P', justification: 'Assumption', depth: 1, isAssumption: true },
+              { lineNumber: 2, formula: 'P', justification: 'Assumption', depth: 1 },
               { lineNumber: 3, formula: 'Q ∧ R', justification: 'MP 1,2', depth: 1 },
-              { lineNumber: 4, formula: 'Q', justification: 'Assumption', depth: 2, isAssumption: true },
+              { lineNumber: 4, formula: 'Q', justification: 'Assumption', depth: 2 },
               { lineNumber: 5, formula: 'R', justification: 'Simp 3', depth: 2 },
               { lineNumber: 6, formula: 'Q → R', justification: 'CD 4-5', depth: 1 },
               { lineNumber: 7, formula: 'P → (Q → R)', justification: 'CD 2-6', depth: 0, isValid: true }
@@ -213,9 +213,9 @@ export const chapter5NestedDerivationsSteps: TutorialStep[] = [
           </div>
           <InteractiveProofEditor
             initialLines={[
-              { lineNumber: 1, formula: 'P → Q', justification: 'Assumption', depth: 1, isAssumption: true },
-              { lineNumber: 2, formula: 'P → R', justification: 'Assumption', depth: 2, isAssumption: true },
-              { lineNumber: 3, formula: 'P', justification: 'Assumption', depth: 3, isAssumption: true },
+              { lineNumber: 1, formula: 'P → Q', justification: 'Assumption', depth: 1 },
+              { lineNumber: 2, formula: 'P → R', justification: 'Assumption', depth: 2 },
+              { lineNumber: 3, formula: 'P', justification: 'Assumption', depth: 3 },
               { lineNumber: 4, formula: 'Q', justification: 'MP 1,3', depth: 3 },
               { lineNumber: 5, formula: 'R', justification: 'MP 2,3', depth: 3 },
               { lineNumber: 6, formula: 'Q ∧ R', justification: 'Conj 4,5', depth: 3 },
@@ -278,8 +278,8 @@ export const chapter5NestedDerivationsSteps: TutorialStep[] = [
           <InteractiveProofEditor
             initialLines={[
               { lineNumber: 1, formula: '(P ∧ Q) → R', justification: 'Premise', depth: 0 },
-              { lineNumber: 2, formula: 'P', justification: 'Assumption', depth: 1, isAssumption: true },
-              { lineNumber: 3, formula: 'Q', justification: 'Assumption', depth: 2, isAssumption: true },
+              { lineNumber: 2, formula: 'P', justification: 'Assumption', depth: 1 },
+              { lineNumber: 3, formula: 'Q', justification: 'Assumption', depth: 2 },
               { lineNumber: 4, formula: 'P ∧ Q', justification: 'Conj 2,3', depth: 2 },
               { lineNumber: 5, formula: 'R', justification: 'MP 1,4', depth: 2 },
               { lineNumber: 6, formula: 'Q → R', justification: 'CD 3-5', depth: 1 },

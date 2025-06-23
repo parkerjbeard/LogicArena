@@ -1,0 +1,39 @@
+# Build stage
+FROM python:3.11-slim as builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip wheel --no-cache-dir --no-deps --wheel-dir /app/wheels -r requirements.txt
+
+# Runtime stage
+FROM python:3.11-slim
+
+# Create non-root user
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+WORKDIR /app
+
+# Copy wheels and install
+COPY --from=builder /app/wheels /wheels
+COPY requirements.txt .
+RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
+
+# Copy application code
+COPY --chown=appuser:appuser . .
+
+# Switch to non-root user
+USER appuser
+
+# Expose port
+EXPOSE 5002
+
+# Run with optimal settings
+CMD ["python", "-u", "app.py"]

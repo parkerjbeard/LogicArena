@@ -10,6 +10,7 @@ import time
 import httpx
 import redis.asyncio as redis
 from fastapi_limiter import FastAPILimiter
+import asyncio
 
 from app.auth.router import router as auth_router
 from app.users.router import router as users_router
@@ -17,7 +18,9 @@ from app.puzzles.router import router as puzzles_router
 from app.games.router import router as games_router
 from app.admin.router import router as admin_router
 from app.config import settings
-from app.db.session import engine, get_db
+from app.db.session import engine, get_db, pool_monitor, close_db_connections, verify_db_connection
+from app.db.health import db_health_checker
+from app.db.pool_optimizer import pool_optimizer
 from app.models import Base
 from app.websocket.manager import ConnectionManager
 from app.middleware.logging_middleware import LoggingMiddleware
@@ -47,8 +50,51 @@ app.add_middleware(RateLimitHeaderMiddleware)
 # Add logging middleware
 app.add_middleware(LoggingMiddleware)
 
+# Add database middleware for error handling and monitoring
+from app.middleware.database import DatabaseMiddleware, ConnectionPoolMiddleware
+app.add_middleware(DatabaseMiddleware)
+app.add_middleware(ConnectionPoolMiddleware)
+
 # Initialize WebSocket connection manager
 connection_manager = ConnectionManager()
+
+# Game event processor task
+game_event_processor_task = None
+
+async def process_game_events():
+    """Subscribe to Redis game events and broadcast to WebSocket connections"""
+    try:
+        redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        pubsub = redis_client.pubsub()
+        await pubsub.subscribe("game_events")
+        
+        logger.info("Game event processor started")
+        
+        async for message in pubsub.listen():
+            if message['type'] == 'message':
+                try:
+                    event = json.loads(message['data'])
+                    event_type = event.get('type')
+                    game_id = event.get('game_id')
+                    
+                    if not game_id:
+                        continue
+                    
+                    logger.info(f"Processing game event: {event_type} for game {game_id}")
+                    
+                    # Broadcast to all players in the game
+                    if event_type in ["round_complete", "game_complete", "submission_failed"]:
+                        await connection_manager.broadcast(str(game_id), event)
+                    
+                except Exception as e:
+                    logger.error(f"Error processing game event: {e}")
+                    
+    except asyncio.CancelledError:
+        logger.info("Game event processor cancelled")
+        await pubsub.unsubscribe("game_events")
+        await redis_client.close()
+    except Exception as e:
+        logger.error(f"Game event processor error: {e}")
 
 # Include routers
 app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
@@ -75,10 +121,18 @@ app.include_router(
 
 @app.on_event("startup")
 async def startup():
+    # Verify database connection
+    if not await verify_db_connection():
+        logger.error("Failed to connect to database")
+        raise RuntimeError("Database connection failed")
+    
     # Create database tables
     async with engine.begin() as conn:
         # await conn.run_sync(Base.metadata.drop_all)  # Uncomment for clean start
         await conn.run_sync(Base.metadata.create_all)
+    
+    # Start connection pool monitoring
+    await pool_monitor.start_monitoring(interval=60)  # Monitor every minute
     
     # Initialize rate limiter with Redis
     redis_instance = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
@@ -87,15 +141,42 @@ async def startup():
     # Initialize WebSocket manager with Redis
     await connection_manager.initialize(settings.REDIS_URL)
     
+    # Schedule token cleanup task to run every hour
+    from app.auth.cleanup import schedule_cleanup
+    cleanup_task = schedule_cleanup(interval_minutes=60)
+    app.state.cleanup_task = cleanup_task  # Store reference to cancel on shutdown
+    
+    # Start game event processor
+    global game_event_processor_task
+    game_event_processor_task = asyncio.create_task(process_game_events())
+    
     logger.info("Application startup complete")
 
 @app.on_event("shutdown")
 async def shutdown():
+    # Cancel cleanup task
+    if hasattr(app.state, "cleanup_task") and app.state.cleanup_task:
+        app.state.cleanup_task.cancel()
+    
+    # Cancel game event processor
+    global game_event_processor_task
+    if game_event_processor_task:
+        game_event_processor_task.cancel()
+        try:
+            await game_event_processor_task
+        except asyncio.CancelledError:
+            pass
+    
+    # Stop connection pool monitoring
+    await pool_monitor.stop_monitoring()
+    
     # Cleanup WebSocket manager
     await connection_manager.cleanup()
     
-    # Close any connections
-    logger.info("Application shutdown")
+    # Close database connections
+    await close_db_connections()
+    
+    logger.info("Application shutdown complete")
 
 @app.get("/", tags=["Health"])
 async def root():
@@ -104,6 +185,30 @@ async def root():
 @app.get("/health", tags=["Health"])
 async def health():
     return {"status": "healthy", "timestamp": time.time()}
+
+@app.get("/health/db", tags=["Health"])
+async def health_db():
+    """Comprehensive database health check with connection pool status"""
+    health_report = await db_health_checker.check_database_health()
+    
+    # Determine HTTP status code based on health
+    if health_report["status"] == "healthy":
+        status_code = 200
+    elif health_report["status"] == "degraded":
+        status_code = 200  # Still operational but with warnings
+    else:
+        status_code = 503
+    
+    if status_code == 503:
+        raise HTTPException(status_code=status_code, detail=health_report)
+    
+    return health_report
+
+@app.get("/health/db/metrics", tags=["Health"])
+async def health_db_metrics():
+    """Get detailed database connection metrics"""
+    metrics = await db_health_checker.get_connection_metrics()
+    return metrics
 
 # WebSocket endpoint for duel matches
 @app.websocket("/ws/duel/{game_id}")
@@ -120,7 +225,7 @@ async def websocket_duel_endpoint(
     
     try:
         from app.auth.utils import verify_token
-        user_id = verify_token(token)
+        user_id = await verify_token(token, db)
         if not user_id:
             await websocket.close(code=1008, reason="Invalid authentication")
             return
@@ -184,7 +289,8 @@ async def websocket_duel_endpoint(
 async def websocket_notifications_endpoint(
     websocket: WebSocket, 
     user_id: str,
-    token: str = None  # Token passed as query param
+    token: str = None,  # Token passed as query param
+    db=Depends(get_db)
 ):
     # Validate token and ensure user_id matches
     if not token:
@@ -193,7 +299,7 @@ async def websocket_notifications_endpoint(
     
     try:
         from app.auth.utils import verify_token
-        token_user_id = verify_token(token)
+        token_user_id = await verify_token(token, db)
         if not token_user_id or str(token_user_id) != user_id:
             await websocket.close(code=1008, reason="Invalid authentication")
             return

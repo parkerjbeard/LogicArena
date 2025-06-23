@@ -14,7 +14,7 @@ import {
   CheckCircleIcon,
   XCircleIcon
 } from '@heroicons/react/24/outline';
-import { api } from '@/lib/api';
+import api from '@/lib/api';
 import AdminGuard from '@/components/AdminGuard';
 
 interface SystemStats {
@@ -42,7 +42,7 @@ interface SystemStats {
 }
 
 export default function AdminDashboard() {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const router = useRouter();
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);

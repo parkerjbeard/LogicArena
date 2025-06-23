@@ -217,6 +217,41 @@ class SubmissionListResponse(BaseModel):
     skip: int
     limit: int
 
+# Proof Testing Schemas
+class ProofTestRequest(BaseModel):
+    gamma: str = Field(..., min_length=1, description="Premises (comma-separated)")
+    phi: str = Field(..., min_length=1, description="Conclusion")
+    proof: str = Field(..., min_length=1, description="Proof text to test")
+    best_len: Optional[int] = Field(None, ge=1, description="Expected optimal length for comparison")
+
+class ProofTestResponse(BaseModel):
+    valid: bool = Field(..., description="Whether the proof is valid")
+    error: Optional[str] = Field(None, description="Error message if proof is invalid")
+    lines: Optional[int] = Field(None, description="Number of lines in the proof")
+    depth: Optional[int] = Field(None, description="Maximum depth of subproofs")
+    rules_used: Optional[List[str]] = Field(None, description="List of inference rules used")
+    syntax_info: Optional[str] = Field(None, description="Syntax format detected")
+    optimality: Optional[Dict[str, Any]] = Field(None, description="Optimality metrics")
+    suggestions: Optional[List[str]] = Field(None, description="Improvement suggestions")
+    counter_model: Optional[Dict[str, bool]] = Field(None, description="Counter-model if sequent is invalid")
+
+# Puzzle Testing Schemas
+class PuzzleTestRequest(BaseModel):
+    gamma: str = Field(..., min_length=1, description="Premises (comma-separated)")
+    phi: str = Field(..., min_length=1, description="Conclusion")
+    difficulty: int = Field(..., ge=1, le=10, description="Puzzle difficulty")
+    best_len: int = Field(..., ge=1, description="Expected optimal proof length")
+    generate_proof: bool = Field(False, description="Whether to generate a machine proof")
+
+class PuzzleTestResponse(BaseModel):
+    valid: bool = Field(..., description="Whether the puzzle is valid (premises entail conclusion)")
+    solvable: bool = Field(..., description="Whether a proof was found")
+    machine_proof: Optional[str] = Field(None, description="Machine-generated proof if requested")
+    actual_best_len: Optional[int] = Field(None, description="Actual shortest proof found")
+    best_len_matches: bool = Field(..., description="Whether claimed best_len matches found proof")
+    counter_model: Optional[Dict[str, bool]] = Field(None, description="Counter-model if invalid")
+    warnings: List[str] = Field(default_factory=list, description="Any warnings about the puzzle")
+
 # System Statistics Schema
 class SystemStats(BaseModel):
     users: Dict[str, int]

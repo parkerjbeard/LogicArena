@@ -1,0 +1,96 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.pytest_cache
+.mypy_cache
+.hypothesis
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+.next/
+out/
+dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Documentation
+*.md
+docs/
+README*
+
+# Tests
+tests/
+test/
+*_test.py
+test_*.py
+
+# Build artifacts
+build/
+*.egg-info/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+
+# Environment files
+.env*
+!.env.example
+
+# Log files
+logs/
+*.log
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Other
+.github/
+.gitlab-ci.yml
+.travis.yml
+Makefile
+requirements-dev.txt
+requirements-test.txt

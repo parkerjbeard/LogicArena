@@ -1,11 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
-from datetime import timedelta
+from datetime import timedelta, datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 import logging
 import secrets
 import urllib.parse
+import jwt
+import base64
+import hashlib
 from starlette.responses import RedirectResponse
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadTimeSignature
@@ -19,7 +22,11 @@ from app.auth.utils import (
     create_access_token,
     create_refresh_token,
     verify_refresh_token,
-    get_current_active_user
+    get_current_active_user,
+    create_user_session,
+    invalidate_user_sessions,
+    revoke_token,
+    is_token_revoked
 )
 from app.config import settings
 from app.middleware.rate_limiter import RateLimiters
@@ -28,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Configure OAuth with enhanced security
+# Configure OAuth with enhanced security and PKCE
 oauth = OAuth()
 oauth.register(
     name='google',
@@ -38,7 +45,8 @@ oauth.register(
     client_kwargs={
         'scope': 'openid email profile',
         'prompt': 'consent',  # Force consent screen for security
-        'access_type': 'offline'  # Get refresh token if needed
+        'access_type': 'offline',  # Get refresh token if needed
+        'code_challenge_method': 'S256'  # Enable PKCE
     }
 )
 
@@ -127,12 +135,28 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
     db.add(login_activity)
     await db.commit()
     
-    # Create access and refresh tokens
+    # Create refresh token first to get JTI
+    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    
+    # Extract JTI from refresh token for session creation
+    refresh_payload = jwt.decode(refresh_token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+    refresh_jti = refresh_payload.get("jti")
+    
+    # Create user session
+    session_id = await create_user_session(
+        user_id=user.id,
+        refresh_token_jti=refresh_jti,
+        ip_address=client_ip,
+        user_agent=user_agent[:255],
+        db=db
+    )
+    
+    # Create access token with session ID
     access_token = create_access_token(
         data={"sub": str(user.id)},
-        expires_delta=timedelta(minutes=settings.JWT_EXPIRATION_MINUTES)
+        expires_delta=timedelta(minutes=settings.JWT_EXPIRATION_MINUTES),
+        session_id=session_id
     )
-    refresh_token = create_refresh_token(data={"sub": str(user.id)})
     
     logger.info(f"User logged in: {user.handle}")
     
@@ -187,12 +211,28 @@ async def login_with_email(request: Request, login_data: UserLogin, db: AsyncSes
     db.add(login_activity)
     await db.commit()
     
-    # Create access and refresh tokens
+    # Create refresh token first to get JTI
+    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    
+    # Extract JTI from refresh token for session creation
+    refresh_payload = jwt.decode(refresh_token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+    refresh_jti = refresh_payload.get("jti")
+    
+    # Create user session
+    session_id = await create_user_session(
+        user_id=user.id,
+        refresh_token_jti=refresh_jti,
+        ip_address=client_ip,
+        user_agent=user_agent[:255],
+        db=db
+    )
+    
+    # Create access token with session ID
     access_token = create_access_token(
         data={"sub": str(user.id)},
-        expires_delta=timedelta(minutes=settings.JWT_EXPIRATION_MINUTES)
+        expires_delta=timedelta(minutes=settings.JWT_EXPIRATION_MINUTES),
+        session_id=session_id
     )
-    refresh_token = create_refresh_token(data={"sub": str(user.id)})
     
     logger.info(f"User logged in with email: {user.handle}")
     
@@ -205,16 +245,26 @@ async def login_with_email(request: Request, login_data: UserLogin, db: AsyncSes
 
 @router.post("/refresh", response_model=Token,
             dependencies=[Depends(RateLimiters.refresh)])
-async def refresh_access_token(refresh_data: RefreshTokenRequest, db: AsyncSession = Depends(get_db)):
+async def refresh_access_token(request: Request, refresh_data: RefreshTokenRequest, db: AsyncSession = Depends(get_db)):
     """Refresh access token using refresh token"""
     # Verify refresh token
     payload = verify_refresh_token(refresh_data.refresh_token)
     user_id = payload.get("sub")
+    jti = payload.get("jti")
+    session_id = payload.get("sid")
     
-    if not user_id:
+    if not user_id or not jti:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Check if refresh token is revoked
+    if await is_token_revoked(jti, db):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
@@ -229,14 +279,42 @@ async def refresh_access_token(refresh_data: RefreshTokenRequest, db: AsyncSessi
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Create new access token
-    access_token = create_access_token(
-        data={"sub": str(user.id)},
-        expires_delta=timedelta(minutes=settings.JWT_EXPIRATION_MINUTES)
+    # Get client info
+    client_ip = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent", "")
+    
+    # Revoke old refresh token
+    await revoke_token(
+        jti=jti,
+        user_id=int(user_id),
+        token_type="refresh",
+        expires_at=datetime.fromtimestamp(payload.get("exp"), tz=timezone.utc),
+        reason="token_rotation",
+        db=db
     )
     
-    # Optionally rotate refresh token for enhanced security
+    # Create new refresh token
     new_refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    
+    # Extract JTI from new refresh token
+    new_refresh_payload = jwt.decode(new_refresh_token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+    new_refresh_jti = new_refresh_payload.get("jti")
+    
+    # Create new session
+    new_session_id = await create_user_session(
+        user_id=user.id,
+        refresh_token_jti=new_refresh_jti,
+        ip_address=client_ip,
+        user_agent=user_agent[:255],
+        db=db
+    )
+    
+    # Create new access token with new session ID
+    access_token = create_access_token(
+        data={"sub": str(user.id)},
+        expires_delta=timedelta(minutes=settings.JWT_EXPIRATION_MINUTES),
+        session_id=new_session_id
+    )
     
     logger.info(f"Tokens refreshed for user: {user.handle}")
     
@@ -250,37 +328,115 @@ async def refresh_access_token(refresh_data: RefreshTokenRequest, db: AsyncSessi
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(current_user: User = Depends(get_current_active_user)):
     """Get information about the current logged-in user"""
-    return current_user 
+    return current_user
+
+@router.post("/logout")
+async def logout(
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db)
+):
+    """Logout the current user by revoking tokens and invalidating sessions"""
+    try:
+        # Decode token to get JTI and session info
+        payload = jwt.decode(
+            token, 
+            settings.JWT_SECRET, 
+            algorithms=[settings.JWT_ALGORITHM],
+            audience="logicarena-client",
+            issuer="logicarena-api"
+        )
+        jti = payload.get("jti")
+        exp = payload.get("exp")
+        
+        # Revoke the current access token
+        if jti and exp:
+            await revoke_token(
+                jti=jti,
+                user_id=current_user.id,
+                token_type="access",
+                expires_at=datetime.fromtimestamp(exp, tz=timezone.utc),
+                reason="logout",
+                db=db
+            )
+        
+        # Invalidate all user sessions
+        await invalidate_user_sessions(current_user.id, db, reason="logout")
+        
+        logger.info(f"User logged out: {current_user.handle}")
+        
+        return {"detail": "Successfully logged out"}
+        
+    except Exception as e:
+        logger.error(f"Error during logout for user {current_user.handle}: {e}")
+        # Even if there's an error, we should still try to log the user out
+        await invalidate_user_sessions(current_user.id, db, reason="logout_error")
+        return {"detail": "Logged out with errors"} 
 
 @router.get('/login/google')
-async def login_via_google(request: Request):
-    """Initiate Google OAuth flow with CSRF protection"""
+async def login_via_google(request: Request, db: AsyncSession = Depends(get_db)):
+    """Initiate Google OAuth flow with PKCE and CSRF protection"""
     redirect_uri = request.url_for('auth_via_google')
     
     # Generate secure state parameter for CSRF protection
     state = secrets.token_urlsafe(32)
     
-    # Store state in session or temporary storage (using serializer for now)
-    # In production, consider using Redis or database with expiration
+    # Generate PKCE code verifier and challenge
+    code_verifier = secrets.token_urlsafe(96)  # 128 bytes when decoded
+    code_challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(code_verifier.encode()).digest()
+    ).decode().rstrip('=')
+    
+    # Store state and code_verifier temporarily
+    # In production, use Redis or database with expiration
+    temp_auth_data = {
+        'state': state,
+        'code_verifier': code_verifier,
+        'timestamp': datetime.now(timezone.utc).isoformat()
+    }
+    
+    # For now, we'll encode this in the state parameter itself
+    # In production, store in Redis/DB and only pass the key
+    combined_state = temp_serializer.dumps({
+        'state': state,
+        'verifier': code_verifier
+    })
     
     return await oauth.google.authorize_redirect(
         request, 
         str(redirect_uri),
-        state=state
+        state=combined_state,
+        code_challenge=code_challenge,
+        code_challenge_method='S256'
     )
 
 @router.get('/auth/google')
 async def auth_via_google(request: Request, db: AsyncSession = Depends(get_db)):
-    """Handle Google OAuth callback with enhanced security validation"""
+    """Handle Google OAuth callback with PKCE and enhanced security validation"""
     try:
-        # Validate state parameter for CSRF protection
+        # Validate and decode state parameter
         state = request.query_params.get('state')
-        if not state or len(state) < 32:
-            logger.warning("Invalid or missing OAuth state parameter")
+        if not state:
+            logger.warning("Missing OAuth state parameter")
             error_url = f"{settings.FRONTEND_URL}/auth/google/callback?error=invalid_state"
             return RedirectResponse(url=error_url)
         
-        token = await oauth.google.authorize_access_token(request)
+        # Decode the combined state to get CSRF token and code verifier
+        try:
+            state_data = temp_serializer.loads(state, max_age=600)  # 10 minute expiry
+            original_state = state_data.get('state')
+            code_verifier = state_data.get('verifier')
+        except Exception as e:
+            logger.warning(f"Invalid OAuth state: {e}")
+            error_url = f"{settings.FRONTEND_URL}/auth/google/callback?error=invalid_state"
+            return RedirectResponse(url=error_url)
+        
+        # Pass code_verifier for PKCE verification
+        token = await oauth.google.authorize_access_token(
+            request,
+            code_verifier=code_verifier
+        )
         
         # Validate token structure
         if not token or 'access_token' not in token:
@@ -337,11 +493,28 @@ async def auth_via_google(request: Request, db: AsyncSession = Depends(get_db)):
         await db.commit()
         
         # User exists, log them in
+        # Create refresh token first to get JTI
+        refresh_token = create_refresh_token(data={"sub": str(user.id)})
+        
+        # Extract JTI from refresh token for session creation
+        refresh_payload = jwt.decode(refresh_token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+        refresh_jti = refresh_payload.get("jti")
+        
+        # Create user session
+        session_id = await create_user_session(
+            user_id=user.id,
+            refresh_token_jti=refresh_jti,
+            ip_address=client_ip,
+            user_agent=user_agent[:255],
+            db=db
+        )
+        
+        # Create access token with session ID
         access_token = create_access_token(
             data={"sub": str(user.id)},
-            expires_delta=timedelta(minutes=settings.JWT_EXPIRATION_MINUTES)
+            expires_delta=timedelta(minutes=settings.JWT_EXPIRATION_MINUTES),
+            session_id=session_id
         )
-        refresh_token = create_refresh_token(data={"sub": str(user.id)})
         
         # For OAuth flow, we'll pass just access token in URL for simplicity
         # In production, consider using a temporary code that exchanges for tokens
@@ -410,60 +583,33 @@ async def complete_google_registration(profile_data: CompleteProfileRequest, db:
 
     logger.info(f"New user registered via Google: {new_user.handle}")
 
-    # Create access and refresh tokens
+    # Create refresh token first to get JTI
+    refresh_token = create_refresh_token(data={"sub": str(new_user.id)})
+    
+    # Extract JTI from refresh token for session creation
+    refresh_payload = jwt.decode(refresh_token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+    refresh_jti = refresh_payload.get("jti")
+    
+    # Get client info from request (not available in this endpoint, so use defaults)
+    # In production, consider passing this info from the OAuth callback
+    session_id = await create_user_session(
+        user_id=new_user.id,
+        refresh_token_jti=refresh_jti,
+        ip_address=None,
+        user_agent=None,
+        db=db
+    )
+    
+    # Create access token with session ID
     access_token = create_access_token(
         data={"sub": str(new_user.id)},
-        expires_delta=timedelta(minutes=settings.JWT_EXPIRATION_MINUTES)
+        expires_delta=timedelta(minutes=settings.JWT_EXPIRATION_MINUTES),
+        session_id=session_id
     )
-    refresh_token = create_refresh_token(data={"sub": str(new_user.id)})
 
     return {
         "access_token": access_token,
         "refresh_token": refresh_token, 
-        "token_type": "bearer",
-        "expires_in": settings.JWT_EXPIRATION_MINUTES * 60
-    }
-
-@router.post("/refresh", response_model=Token,
-            dependencies=[Depends(RateLimiters.refresh)])
-async def refresh_access_token(refresh_data: RefreshTokenRequest, db: AsyncSession = Depends(get_db)):
-    """Refresh access token using refresh token"""
-    # Verify refresh token
-    payload = verify_refresh_token(refresh_data.refresh_token)
-    user_id = payload.get("sub")
-    
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    # Verify user still exists and is active
-    result = await db.execute(select(User).filter(User.id == user_id))
-    user = result.scalars().first()
-    
-    if not user or not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    # Create new access token
-    access_token = create_access_token(
-        data={"sub": str(user.id)},
-        expires_delta=timedelta(minutes=settings.JWT_EXPIRATION_MINUTES)
-    )
-    
-    # Optionally rotate refresh token for enhanced security
-    new_refresh_token = create_refresh_token(data={"sub": str(user.id)})
-    
-    logger.info(f"Tokens refreshed for user: {user.handle}")
-    
-    return {
-        "access_token": access_token,
-        "refresh_token": new_refresh_token,
         "token_type": "bearer",
         "expires_in": settings.JWT_EXPIRATION_MINUTES * 60
     } 

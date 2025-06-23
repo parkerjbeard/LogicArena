@@ -111,4 +111,35 @@ class LoginActivity(Base):
     created = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
     
     # Relationships
-    user = relationship("User", back_populates="login_activities") 
+    user = relationship("User", back_populates="login_activities")
+
+class RevokedToken(Base):
+    __tablename__ = "revoked_token"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    jti = Column(String(255), unique=True, nullable=False, index=True)  # JWT ID
+    user_id = Column(Integer, ForeignKey("user.id"), nullable=False)
+    token_type = Column(String(20), nullable=False)  # 'access' or 'refresh'
+    revoked_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False)  # Original token expiration
+    reason = Column(String(255))  # logout, security, admin_action, etc.
+    
+    # Relationships
+    user = relationship("User")
+
+class UserSession(Base):
+    __tablename__ = "user_session"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("user.id"), nullable=False)
+    session_id = Column(String(255), unique=True, nullable=False, index=True)
+    refresh_token_jti = Column(String(255), unique=True, nullable=False, index=True)
+    ip_address = Column(String(45))  # IPv6 max length
+    user_agent = Column(String(255))
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    last_activity = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    
+    # Relationships
+    user = relationship("User") 

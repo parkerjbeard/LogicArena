@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { puzzleAPI } from '@/lib/api';
-import CarnapFitchEditor from '@/components/CarnapFitchEditor';
+import CarnapFitchEditor from '@/components/LazyCarnapFitchEditor';
 
 // Puzzle type
 type Puzzle = {

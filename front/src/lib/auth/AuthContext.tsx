@@ -89,6 +89,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
+      // Call backend logout endpoint to revoke tokens
+      try {
+        await authAPI.logout();
+      } catch (error) {
+        // Even if backend logout fails, we should still log out locally
+        console.error('Backend logout failed:', error);
+      }
+      
       // Clear tokens
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');

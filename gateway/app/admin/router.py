@@ -6,16 +6,21 @@ from sqlalchemy.orm import selectinload
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 import logging
+import httpx
+import time
 
 from app.db.session import get_db
 from app.models import User, Puzzle, Game, Round, Submission
 from app.auth.utils import get_current_admin_user
+from app.config import settings
 from app.admin.schemas import (
     UserUpdate, UserResponse, UserListResponse,
     PuzzleCreate, PuzzleUpdate, PuzzleResponse, PuzzleListResponse,
     GameResponse, GameListResponse,
     SubmissionResponse, SubmissionListResponse,
-    SystemStats
+    SystemStats,
+    ProofTestRequest, ProofTestResponse,
+    PuzzleTestRequest, PuzzleTestResponse
 )
 
 logger = logging.getLogger(__name__)
@@ -453,6 +458,175 @@ async def list_submissions(
         skip=skip,
         limit=limit
     )
+
+# Proof Testing Endpoints
+@router.post("/test-proof", response_model=ProofTestResponse)
+async def test_proof(
+    proof_test: ProofTestRequest,
+    current_admin: User = Depends(get_current_admin_user)
+):
+    """Test a proof for validity - useful when creating puzzles"""
+    try:
+        # Call the proof checker service
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{settings.PROOF_CHECKER_URL}/verify",
+                json={
+                    "gamma": proof_test.gamma,
+                    "phi": proof_test.phi,
+                    "proof": proof_test.proof
+                },
+                timeout=10.0
+            )
+            
+            result = response.json()
+            
+            # Extract relevant information from the proof checker response
+            details = result.get("details", {})
+            
+            return ProofTestResponse(
+                valid=result.get("ok", False),
+                error=result.get("error"),
+                lines=result.get("lines"),
+                depth=result.get("depth"),
+                rules_used=details.get("rules_used", []),
+                syntax_info=result.get("syntax_info"),
+                optimality=details.get("optimality"),
+                suggestions=details.get("suggestions", []),
+                counter_model=result.get("counterModel")
+            )
+            
+    except httpx.RequestError as e:
+        logger.error(f"Error connecting to proof checker: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Proof checker service is unavailable"
+        )
+    except Exception as e:
+        logger.error(f"Error testing proof: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to test proof: {str(e)}"
+        )
+
+@router.post("/test-puzzle", response_model=PuzzleTestResponse)
+async def test_puzzle(
+    puzzle_test: PuzzleTestRequest,
+    current_admin: User = Depends(get_current_admin_user)
+):
+    """Test a puzzle configuration before creating it"""
+    try:
+        warnings = []
+        
+        # First, verify that the puzzle is valid (premises entail conclusion)
+        async with httpx.AsyncClient() as client:
+            # Try to find a proof to verify the puzzle is solvable
+            solve_response = await client.post(
+                f"{settings.PROOF_CHECKER_URL}/solve",
+                json={
+                    "gamma": puzzle_test.gamma,
+                    "phi": puzzle_test.phi,
+                    "proof": ""  # Empty proof for solving
+                },
+                timeout=30.0  # Give more time for proof search
+            )
+            
+            solve_result = solve_response.json()
+            
+            if not solve_result.get("success", False):
+                # No proof found - check if it's because the sequent is invalid
+                # Generate a counter-model to see if premises don't entail conclusion
+                verify_response = await client.post(
+                    f"{settings.PROOF_CHECKER_URL}/verify",
+                    json={
+                        "gamma": puzzle_test.gamma,
+                        "phi": puzzle_test.phi,
+                        "proof": "dummy"  # Dummy proof to trigger counter-model generation
+                    },
+                    timeout=10.0
+                )
+                
+                verify_result = verify_response.json()
+                counter_model = verify_result.get("counterModel")
+                
+                return PuzzleTestResponse(
+                    valid=False,
+                    solvable=False,
+                    machine_proof=None,
+                    actual_best_len=None,
+                    best_len_matches=False,
+                    counter_model=counter_model,
+                    warnings=["Puzzle appears to be unsolvable - premises may not entail conclusion"]
+                )
+            
+            # Puzzle is solvable
+            machine_proof = solve_result.get("proof", "") if puzzle_test.generate_proof else None
+            actual_length = solve_result.get("length", 0)
+            
+            # Compare with claimed best length
+            best_len_matches = actual_length == puzzle_test.best_len
+            
+            if actual_length < puzzle_test.best_len:
+                warnings.append(f"Found shorter proof ({actual_length} steps) than claimed best_len ({puzzle_test.best_len})")
+            elif actual_length > puzzle_test.best_len:
+                warnings.append(f"Could not find proof as short as claimed best_len ({puzzle_test.best_len}), shortest found: {actual_length}")
+            
+            # Additional validation checks
+            
+            # Check puzzle difficulty is appropriate
+            if puzzle_test.difficulty <= 3 and actual_length > 5:
+                warnings.append(f"Difficulty {puzzle_test.difficulty} may be too low for a {actual_length}-step proof")
+            elif puzzle_test.difficulty >= 8 and actual_length < 5:
+                warnings.append(f"Difficulty {puzzle_test.difficulty} may be too high for a {actual_length}-step proof")
+            
+            # Check for trivial puzzles
+            if actual_length == 1:
+                warnings.append("Puzzle is trivial (1-step proof) - consider making it more challenging")
+            
+            # Check for overly complex premises
+            premise_count = len([p.strip() for p in puzzle_test.gamma.split(',') if p.strip()])
+            if premise_count > 5:
+                warnings.append(f"High number of premises ({premise_count}) may make puzzle confusing")
+            
+            # Verify optimal length claim if requested
+            if puzzle_test.best_len and puzzle_test.generate_proof:
+                # Try to verify the optimal length claim
+                optimal_response = await client.post(
+                    f"{settings.PROOF_CHECKER_URL}/verify-optimal",
+                    json={
+                        "premises": [p.strip() for p in puzzle_test.gamma.split(',') if p.strip()],
+                        "conclusion": puzzle_test.phi,
+                        "claimed_length": puzzle_test.best_len
+                    },
+                    timeout=30.0
+                )
+                
+                optimal_result = optimal_response.json()
+                if not optimal_result.get("valid", True):
+                    warnings.append("Could not verify that the claimed best_len is actually optimal")
+            
+            return PuzzleTestResponse(
+                valid=True,
+                solvable=True,
+                machine_proof=machine_proof,
+                actual_best_len=actual_length,
+                best_len_matches=best_len_matches,
+                counter_model=None,
+                warnings=warnings
+            )
+            
+    except httpx.RequestError as e:
+        logger.error(f"Error connecting to proof checker: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Proof checker service is unavailable"
+        )
+    except Exception as e:
+        logger.error(f"Error testing puzzle: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to test puzzle: {str(e)}"
+        )
 
 # System Statistics Endpoint
 @router.get("/stats", response_model=SystemStats)

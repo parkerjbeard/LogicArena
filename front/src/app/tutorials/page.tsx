@@ -14,7 +14,7 @@ import {
   Users,
   ChevronLeft
 } from 'lucide-react';
-import { TutorialFramework } from '@/components/Tutorial/TutorialFramework';
+import { TutorialFramework } from '@/components/Tutorial/LazyTutorialFramework';
 import { yourFirstProofSteps } from '@/tutorials/yourFirstProof';
 import { usingAssumptionsSteps } from '@/tutorials/usingAssumptions';
 import { nestedDerivationsTutorial } from '@/tutorials/nestedDerivations';
@@ -37,6 +37,7 @@ interface Tutorial {
   completed?: boolean;
   locked?: boolean;
 }
+
 
 const tutorials: Tutorial[] = [
   {
@@ -148,9 +149,11 @@ const tutorials: Tutorial[] = [
   }
 ];
 
+
 export default function TutorialsPage() {
   const [selectedTutorial, setSelectedTutorial] = useState<Tutorial | null>(null);
   const [completedTutorials, setCompletedTutorials] = useState<string[]>([]);
+
 
   const handleStartTutorial = (tutorial: Tutorial) => {
     if (!tutorial.locked) {
@@ -294,10 +297,10 @@ export default function TutorialsPage() {
       </div>
 
       {/* Tutorial Modal */}
-      {selectedTutorial && selectedTutorial.steps.length > 0 && (
+      {selectedTutorial && (
         <TutorialFramework
           title={selectedTutorial.title}
-          steps={selectedTutorial.steps}
+          steps={selectedTutorial.steps || []}
           onComplete={handleCompleteTutorial}
           onExit={() => setSelectedTutorial(null)}
         />

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { motion } from 'framer-motion';
@@ -173,40 +173,14 @@ export default function AccountManagement() {
                 <div>
                   <p className="text-sm text-gray-400">Account Type</p>
                   <p className="text-lg text-white">
-                    {user?.google_id ? 'Google Account' : 'Standard Account'}
+                    Standard Account
                     {user?.is_admin && ' (Admin)'}
                   </p>
                 </div>
-                {user?.created_at && (
-                  <div>
-                    <p className="text-sm text-gray-400">Member Since</p>
-                    <p className="text-lg text-white">{formatDate(user.created_at)}</p>
-                  </div>
-                )}
               </div>
             </div>
           </motion.div>
 
-          {/* Google Account Info */}
-          {user?.google_id && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="bg-gray-800/30 backdrop-blur-sm border border-gray-700/50 rounded-lg p-6"
-            >
-              <h2 className="text-xl font-semibold text-white mb-4">Google Account</h2>
-              <div className="bg-green-900/20 backdrop-blur-sm border border-green-600/30 rounded-lg p-4">
-                <p className="text-sm text-green-400 flex items-center gap-2">
-                  <CheckCircleIcon className="h-5 w-5" />
-                  Your account is linked with Google OAuth
-                </p>
-                <p className="text-xs text-gray-400 mt-2">
-                  You can sign in using your Google account without a password
-                </p>
-              </div>
-            </motion.div>
-          )}
 
           {/* Data Export */}
           <motion.div

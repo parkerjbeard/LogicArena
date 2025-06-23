@@ -103,7 +103,7 @@ export const chapter4ConditionalDerivationsSteps: TutorialStep[] = [
             initialLines={[
               { lineNumber: 1, formula: 'P → Q', justification: 'Premise', depth: 0 },
               { lineNumber: 2, formula: 'Q → R', justification: 'Premise', depth: 0 },
-              { lineNumber: 3, formula: 'P', justification: 'Assumption', depth: 1, isAssumption: true },
+              { lineNumber: 3, formula: 'P', justification: 'Assumption', depth: 1 },
               { lineNumber: 4, formula: 'Q', justification: 'MP 1,3', depth: 1 },
               { lineNumber: 5, formula: 'R', justification: 'MP 2,4', depth: 1 },
               { lineNumber: 6, formula: 'P → R', justification: 'CD 3-5', depth: 0, isValid: true }
@@ -273,7 +273,7 @@ export const chapter4ConditionalDerivationsSteps: TutorialStep[] = [
           <InteractiveProofEditor
             initialLines={[
               { lineNumber: 1, formula: 'P → (Q → R)', justification: 'Premise', depth: 0 },
-              { lineNumber: 2, formula: 'P ∧ Q', justification: 'Assumption', depth: 1, isAssumption: true },
+              { lineNumber: 2, formula: 'P ∧ Q', justification: 'Assumption', depth: 1 },
               { lineNumber: 3, formula: 'P', justification: 'Simp 2', depth: 1 },
               { lineNumber: 4, formula: 'Q', justification: 'Simp 2', depth: 1 },
               { lineNumber: 5, formula: 'Q → R', justification: 'MP 1,3', depth: 1 },

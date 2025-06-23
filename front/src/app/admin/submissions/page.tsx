@@ -14,7 +14,7 @@ import {
   ClockIcon,
   CodeBracketIcon
 } from '@heroicons/react/24/outline';
-import { api } from '@/lib/api';
+import api from '@/lib/api';
 
 interface Submission {
   id: number;

@@ -9,6 +9,9 @@ import re
 import tempfile
 import os
 from enum import Enum
+from quantifier_rules import QuantifierHandler
+from cnf_converter import CNFConverter
+from machine_solver import MachineSolver
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -161,15 +164,25 @@ class CarnapFitchProofChecker:
         self.accessible_lines = set()
         self.show_lines = {}
         self.line_to_step = {}  # Maps line numbers to step indices
+        self.quantifier_handler = QuantifierHandler()  # Add quantifier logic handler
         
     def normalize_formula(self, formula: str) -> str:
         """Normalize formula for comparison"""
+        # Replace special symbols first to avoid conflicts
+        formula = formula.replace('!?', '⊥')
+        formula = formula.replace('_|_', '⊥')
         # Replace various arrow notations with standard form
-        formula = formula.replace('->', '→').replace('<->', '↔')
+        formula = formula.replace('<->', '↔')  # Do biconditional first
+        formula = formula.replace('->', '→')
         formula = formula.replace('/\\', '∧').replace('&', '∧')
         formula = formula.replace('\\/', '∨').replace('|', '∨')
-        formula = formula.replace('~', '¬').replace('-', '¬')
-        formula = formula.replace('!?', '⊥').replace('_|_', '⊥')
+        formula = formula.replace('~', '¬')
+        # Only replace - with ¬ if it's not between digits (to preserve ranges)
+        import re
+        formula = re.sub(r'(?<!\d)-(?!\d)', '¬', formula)
+        # Boolean constants
+        formula = formula.replace('true', '⊤').replace('T', '⊤')
+        formula = formula.replace('false', '⊥').replace('F', '⊥')
         # Remove extra spaces but preserve structure
         formula = ' '.join(formula.split())
         return formula
@@ -351,25 +364,21 @@ class CarnapFitchProofChecker:
         
         # Parse line citations
         if len(parts) > 1:
-            for part in parts[1:]:
-                # Handle comma-separated lines
-                if ',' in part:
-                    for num in part.split(','):
-                        try:
-                            cited_lines.append(int(num.strip()))
-                        except ValueError:
-                            pass
+            # Join all citation parts and split by comma
+            citations = ' '.join(parts[1:])
+            for citation in citations.split(','):
+                citation = citation.strip()
                 # Handle range (e.g., "3-5")
-                elif '-' in part:
+                if '-' in citation and citation.count('-') == 1:
                     try:
-                        start, end = map(int, part.split('-'))
+                        start, end = map(int, citation.split('-'))
                         cited_lines.extend(range(start, end + 1))
                     except ValueError:
                         pass
                 # Single line number
                 else:
                     try:
-                        cited_lines.append(int(part))
+                        cited_lines.append(int(citation))
                     except ValueError:
                         pass
         
@@ -471,13 +480,13 @@ class CarnapFitchProofChecker:
                     if '→' in formula_norm:
                         parts = formula_norm.split('→', 1)
                         if len(parts) == 2:
-                            antecedent = self.normalize_formula(parts[0])
-                            consequent = self.normalize_formula(parts[1])
+                            antecedent = self.normalize_formula(parts[0].strip())
+                            consequent = self.normalize_formula(parts[1].strip())
                             # Check other formulas for antecedent
                             for j, other in enumerate(ref_formulas):
                                 if i != j:
                                     other_norm = self.normalize_formula(other)
-                                    if other_norm == antecedent and consequent == conclusion_norm:
+                                    if other_norm.strip() == antecedent.strip() and consequent.strip() == conclusion_norm.strip():
                                         return True
                 self.errors.append(f"Line {line_num}: Invalid {self.INFERENCE_RULES[rule]} - need conditional and its antecedent")
                 return False
@@ -487,14 +496,16 @@ class CarnapFitchProofChecker:
                 # Build expected conjunction
                 left = self.normalize_formula(ref_formulas[0])
                 right = self.normalize_formula(ref_formulas[1])
-                expected = f"{left}∧{right}"
-                expected_alt = f"({left})∧({right})"
-                if conclusion_norm == expected or conclusion_norm == expected_alt:
+                expected = f"{left} ∧ {right}"
+                expected_alt = f"({left}) ∧ ({right})"
+                expected_compact = f"{left}∧{right}"
+                if conclusion_norm == expected or conclusion_norm == expected_alt or conclusion_norm == expected_compact:
                     return True
                 # Try reverse order
-                expected_rev = f"{right}∧{left}"
-                expected_rev_alt = f"({right})∧({left})"
-                if conclusion_norm == expected_rev or conclusion_norm == expected_rev_alt:
+                expected_rev = f"{right} ∧ {left}"
+                expected_rev_alt = f"({right}) ∧ ({left})"
+                expected_rev_compact = f"{right}∧{left}"
+                if conclusion_norm == expected_rev or conclusion_norm == expected_rev_alt or conclusion_norm == expected_rev_compact:
                     return True
                 self.errors.append(f"Line {line_num}: Invalid {self.INFERENCE_RULES[rule]} - conclusion should be conjunction of cited formulas")
                 return False
@@ -551,13 +562,15 @@ class CarnapFitchProofChecker:
                 # Extract the parts of the biconditional
                 parts = conclusion_norm.split('↔', 1)
                 if len(parts) == 2:
-                    left = self.normalize_formula(parts[0])
-                    right = self.normalize_formula(parts[1])
+                    left = self.normalize_formula(parts[0].strip())
+                    right = self.normalize_formula(parts[1].strip())
                     # Check if we have both directions
-                    forward = f"{left}→{right}"
-                    backward = f"{right}→{left}"
+                    forward = f"{left} → {right}"
+                    backward = f"{right} → {left}"
+                    forward_compact = f"{left}→{right}"
+                    backward_compact = f"{right}→{left}"
                     ref_norms = [self.normalize_formula(f) for f in ref_formulas]
-                    if forward in ref_norms and backward in ref_norms:
+                    if (forward in ref_norms or forward_compact in ref_norms) and (backward in ref_norms or backward_compact in ref_norms):
                         return True
             self.errors.append(f"Line {line_num}: {self.INFERENCE_RULES[rule]} requires both directions of implication")
             return False
@@ -670,6 +683,73 @@ class CarnapFitchProofChecker:
                                     if other_norm == f"¬{consequent}" and conclusion_norm == f"¬{antecedent}":
                                         return True
                 self.errors.append(f"Line {line_num}: Invalid {self.INFERENCE_RULES[rule]} - need P→Q and ¬Q to derive ¬P")
+                return False
+        
+        # Quantifier rules
+        elif rule in ['AI', 'UI', '∀I']:  # Universal Introduction
+            # Need to find the arbitrary constant and check context
+            if len(ref_formulas) >= 1:
+                premise = ref_formulas[0]
+                # Try to identify the arbitrary constant (simplified approach)
+                # In a full implementation, we'd track this from the subproof
+                premise_vars = self.quantifier_handler.extract_free_variables(premise)
+                
+                # Get context (previous accessible lines)
+                context = []
+                for line in self.accessible_lines:
+                    if line in self.line_formulas and line < line_num:
+                        context.append(self.line_formulas[line])
+                
+                # Try each possible constant
+                for const in premise_vars:
+                    valid, error = self.quantifier_handler.validate_universal_intro(
+                        premise, conclusion, const, context
+                    )
+                    if valid:
+                        return True
+                
+                self.errors.append(f"Line {line_num}: Invalid {self.INFERENCE_RULES[rule]} - cannot derive {conclusion}")
+                return False
+        
+        elif rule in ['AE', 'UE', '∀E']:  # Universal Elimination
+            if len(ref_formulas) >= 1:
+                premise = ref_formulas[0]
+                # Extract the term from the conclusion (simplified)
+                # In practice, we'd need to unify to find the substituted term
+                premise_vars = self.quantifier_handler.extract_free_variables(conclusion)
+                
+                # Try common terms
+                possible_terms = list('abcdefgh') + list(premise_vars)
+                for term in possible_terms:
+                    valid, error = self.quantifier_handler.validate_universal_elim(
+                        premise, conclusion, term
+                    )
+                    if valid:
+                        return True
+                
+                self.errors.append(f"Line {line_num}: Invalid {self.INFERENCE_RULES[rule]} - {error if 'error' in locals() else 'invalid instantiation'}")
+                return False
+        
+        elif rule in ['EI', '∃I']:  # Existential Introduction
+            if len(ref_formulas) >= 1:
+                premise = ref_formulas[0]
+                valid, error = self.quantifier_handler.validate_existential_intro(
+                    premise, conclusion
+                )
+                if not valid:
+                    self.errors.append(f"Line {line_num}: Invalid {self.INFERENCE_RULES[rule]} - {error}")
+                return valid
+        
+        elif rule in ['EE', '∃E']:  # Existential Elimination
+            # This is complex - requires checking subproof structure
+            # For now, check basic requirements
+            if len(ref_formulas) >= 1:
+                # Should have existential premise and cite subproof lines
+                for formula in ref_formulas:
+                    if self.quantifier_handler.parse_quantified_formula(formula):
+                        # Basic check - proper implementation needs subproof tracking
+                        return True
+                self.errors.append(f"Line {line_num}: {self.INFERENCE_RULES[rule]} requires existential premise and proper subproof")
                 return False
         
         # For other rules, we'll be lenient for now
@@ -829,57 +909,14 @@ class CarnapFitchProofChecker:
 
 # SAT solver for countermodels
 class CountermodelGenerator:
-    """Generate countermodels using minisat"""
+    """Generate countermodels using minisat with enhanced CNF conversion"""
     
     def __init__(self):
-        self.variables = {}
-        self.var_count = 0
-        self.clauses = []
-        
-    def extract_variables(self, formula: str) -> set:
-        """Extract propositional variables from formula"""
-        # Normalize formula first
-        formula = formula.replace('->', '').replace('<->', '').replace('→', '').replace('↔', '')
-        formula = formula.replace('/\\', '').replace('\\/', '').replace('&', '').replace('|', '')
-        formula = formula.replace('∧', '').replace('∨', '').replace('¬', '').replace('~', '').replace('-', '')
-        formula = formula.replace('!?', '').replace('_|_', '').replace('⊥', '')
-        formula = formula.replace('(', '').replace(')', '').replace(' ', '')
-        
-        # Extract uppercase letters
-        variables = set()
-        for char in formula:
-            if char.isupper() and char.isalpha():
-                variables.add(char)
-        return variables
-    
-    def formula_to_cnf(self, formula: str, negate: bool = False) -> List[List[int]]:
-        """Convert formula to CNF (simplified version)"""
-        # This is a very simplified CNF conversion
-        # In production, would need a proper parser and CNF converter
-        
-        # Extract variables
-        vars_in_formula = self.extract_variables(formula)
-        
-        # Assign numbers to variables
-        for var in vars_in_formula:
-            if var not in self.variables:
-                self.var_count += 1
-                self.variables[var] = self.var_count
-        
-        # For now, return a simple clause
-        # This would need proper implementation
-        if negate:
-            return [[-self.variables.get(v, 1) for v in vars_in_formula]]
-        else:
-            return [[self.variables.get(v, 1) for v in vars_in_formula]]
+        self.cnf_converter = CNFConverter()
     
     def generate_countermodel(self, gamma: str, phi: str) -> Optional[Dict[str, bool]]:
         """Generate countermodel if premises don't entail conclusion"""
         try:
-            self.variables = {}
-            self.var_count = 0
-            self.clauses = []
-            
             # Parse premises
             premises = []
             if gamma.strip():
@@ -900,17 +937,19 @@ class CountermodelGenerator:
                 if current.strip():
                     premises.append(current.strip())
             
-            # Convert premises to CNF (must all be true)
-            for premise in premises:
-                self.clauses.extend(self.formula_to_cnf(premise, negate=False))
+            # Add conclusion to check satisfiability
+            all_formulas = premises + [phi]
             
-            # Add negation of conclusion
-            self.clauses.extend(self.formula_to_cnf(phi, negate=True))
+            # Convert to CNF using enhanced converter
+            # Negate the last formula (conclusion) to check if premises entail conclusion
+            clauses, var_map, num_vars = self.cnf_converter.convert_formula_set(
+                all_formulas, negate_last=True
+            )
             
             # Create DIMACS file with secure temporary file handling
             with tempfile.NamedTemporaryFile(mode='w', suffix='.cnf', delete=False) as dimacs_f:
-                dimacs_f.write(f"p cnf {self.var_count} {len(self.clauses)}\n")
-                for clause in self.clauses:
+                dimacs_f.write(f"p cnf {num_vars} {len(clauses)}\n")
+                for clause in clauses:
                     dimacs_f.write(' '.join(map(str, clause)) + ' 0\n')
                 dimacs_file = dimacs_f.name
             
@@ -945,7 +984,7 @@ class CountermodelGenerator:
                                 countermodel = {}
                                 
                                 # Map assignments back to variables
-                                var_to_name = {num: name for name, num in self.variables.items()}
+                                var_to_name = {num: name for name, num in var_map.items()}
                                 
                                 for assignment in assignments:
                                     if assignment != '0':
@@ -960,8 +999,8 @@ class CountermodelGenerator:
             except FileNotFoundError:
                 logger.error("minisat not found")
                 # Return mock countermodel for testing
-                if self.variables:
-                    return {var: False for var in self.variables.keys()}
+                if var_map:
+                    return {var: False for var in var_map.keys()}
             finally:
                 # Cleanup
                 for file in [dimacs_file, result_file]:
@@ -989,7 +1028,9 @@ async def root():
         "endpoints": [
             "/verify",
             "/health",
-            "/syntax-guide"
+            "/syntax-guide",
+            "/solve",
+            "/verify-optimal"
         ]
     }
 
@@ -1001,7 +1042,7 @@ async def verify_proof(request: ProofRequest) -> ProofResponse:
         response = checker.validate_proof(
             gamma=request.gamma,
             phi=request.phi,
-            proof=request.proof
+            proof_text=request.proof
         )
         
         # If proof is invalid due to invalid sequent, generate countermodel
@@ -1076,6 +1117,101 @@ async def health_check():
         "minisat_available": minisat_available,
         "syntax": "carnap-compatible"
     }
+
+@app.post("/solve")
+async def machine_solve(request: ProofRequest):
+    """Automatically find a proof using the machine solver"""
+    try:
+        solver = MachineSolver(max_depth=20)
+        
+        # Parse premises
+        premises = []
+        if request.gamma.strip():
+            current = ""
+            paren_depth = 0
+            for char in request.gamma:
+                if char == ',' and paren_depth == 0:
+                    if current.strip():
+                        premises.append(current.strip())
+                    current = ""
+                else:
+                    if char == '(':
+                        paren_depth += 1
+                    elif char == ')':
+                        paren_depth -= 1
+                    current += char
+            if current.strip():
+                premises.append(current.strip())
+        
+        # Find proof
+        proof = solver.find_proof(premises, request.phi)
+        
+        if proof:
+            # Format proof in Carnap style
+            formatted_lines = []
+            for line in proof:
+                indent = "  " * line.subproof_level
+                
+                # Map solver rules to Carnap notation
+                rule_map = {
+                    "Assumption": "AS" if line.cited_lines else "PR",
+                    "Modus Ponens": "MP",
+                    "Modus Tollens": "MT",
+                    "Conjunction Introduction": "&I",
+                    "Conjunction Elimination": "&E",
+                    "Disjunction Introduction": "|I",
+                    "Implication Introduction": "->I",
+                    "Negation Introduction": "~I",
+                    "Reiteration": "R"
+                }
+                
+                rule = rule_map.get(line.rule.value, line.rule.value)
+                citation = f" {','.join(map(str, line.cited_lines))}" if line.cited_lines else ""
+                
+                formatted_lines.append(f"{indent}{line.formula} :{rule}{citation}")
+            
+            return {
+                "success": True,
+                "proof": "\n".join(formatted_lines),
+                "length": len([l for l in proof if not (l.rule.value == "Assumption" and not l.cited_lines)]),
+                "message": "Proof found successfully"
+            }
+        else:
+            return {
+                "success": False,
+                "proof": None,
+                "length": None,
+                "message": "No proof found within depth limit"
+            }
+            
+    except Exception as e:
+        logger.error(f"Error in machine solver: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "message": "Internal error in proof search"
+        }
+
+@app.post("/verify-optimal")
+async def verify_optimal_length(request: dict):
+    """Verify if a puzzle has the claimed optimal proof length"""
+    try:
+        solver = MachineSolver(max_depth=25)
+        
+        premises = request.get("premises", [])
+        conclusion = request.get("conclusion", "")
+        claimed_length = request.get("claimed_length", 0)
+        
+        result = solver.verify_optimal_length(premises, conclusion, claimed_length)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error verifying optimal length: {e}")
+        return {
+            "valid": False,
+            "error": str(e)
+        }
 
 if __name__ == "__main__":
     import uvicorn

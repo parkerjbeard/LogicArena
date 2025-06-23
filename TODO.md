@@ -3,23 +3,12 @@
 ## Priority 1: Critical/MVP Features
 
 
-### Complete Core Authentication
-- [ ] Enhance Google OAuth implementation
-  - [ ] Add token blacklisting for logout/revocation
-  - [ ] Implement proper session management
-  - [ ] Handle OAuth errors gracefully
-  - [ ] Add PKCE (Proof Key for Code Exchange) to OAuth flow
-
-### Essential Proof Checker Features
-- [ ] Implement quantifier logic rules (∀I, ∀E, ∃I, ∃E)
-- [ ] Advanced CNF conversion for better countermodels
-- [ ] Machine-solve puzzles to verify optimal length
-
 ### Performance & Stability
 - [ ] Implement basic caching strategy
   - [ ] Cache puzzle content
   - [ ] Store user preferences
   - [ ] Preload common assets
+  - [ ] Add Redis caching for leaderboard and user profiles
 - [ ] Add basic monitoring
   - [ ] Error rate monitoring
   - [ ] Performance tracking
@@ -60,6 +49,11 @@
   - [ ] Average time per difficulty level
   - [ ] Success rate by inference rule type
   - [ ] Personal improvement graphs
+- [ ] Enhanced practice features
+  - [ ] Save partial proofs for later completion
+  - [ ] Adaptive difficulty based on success rate
+  - [ ] Practice history with replay functionality
+  - [ ] Custom practice sessions by rule type
 
 ### Solution Explanation System
 - [ ] Create solution viewer component
@@ -95,16 +89,35 @@
   - [ ] SSL certificate setup
   - [ ] Domain configuration
   - [ ] CDN for static assets
+  - [ ] Service worker for offline support
 - [ ] Set up monitoring stack
   - [ ] Prometheus metrics
   - [ ] Grafana dashboards
   - [ ] Log aggregation
   - [ ] Alerting rules
+  - [ ] Real User Monitoring (RUM)
 - [ ] Implement backup strategy
   - [ ] Automated database backups
   - [ ] Point-in-time recovery
   - [ ] Backup verification
   - [ ] Disaster recovery plan
+
+### User Experience Improvements
+- [ ] Enhanced duel experience
+  - [ ] Spectator mode for live matches
+  - [ ] Post-match analysis and replay
+  - [ ] Rematch functionality
+  - [ ] Multiple time control options
+- [ ] Mobile optimization
+  - [ ] Touch-friendly proof editor
+  - [ ] Responsive inference rule palette
+  - [ ] Gesture-based interactions
+  - [ ] Mobile-specific UI components
+- [ ] Accessibility improvements
+  - [ ] Keyboard navigation for all features
+  - [ ] Screen reader support
+  - [ ] High contrast mode
+  - [ ] Customizable font sizes
 
 ---
 
@@ -146,10 +159,13 @@
   - [ ] Manage OAuth permissions/scopes
   - [ ] Remember me functionality
   - [ ] Device verification for new logins
+  - [ ] Multiple authentication providers (GitHub, Discord)
 - [ ] Advanced practice features
   - [ ] Spaced repetition system
   - [ ] Adaptive difficulty based on performance
   - [ ] Personal learning analytics
+  - [ ] AI-powered practice recommendations
+  - [ ] Custom learning paths based on weaknesses
 
 ### Content Management & Admin
 - [ ] Admin Dashboard
@@ -192,11 +208,20 @@
   - [ ] GraphQL implementation
   - [ ] Advanced caching strategies
   - [ ] Database optimization
+  - [ ] WebAssembly for proof checking
+  - [ ] Edge computing for global performance
 - [ ] CI/CD Pipeline
   - [ ] Automated testing on PR
   - [ ] Deployment validation
   - [ ] Rollback procedures
   - [ ] Health checks
+  - [ ] Performance regression testing
+  - [ ] Security scanning in pipeline
+- [ ] AI Integration
+  - [ ] AI opponent with adaptive difficulty
+  - [ ] Natural language to formal logic conversion
+  - [ ] Intelligent tutoring system
+  - [ ] Automated puzzle generation with AI
 
 ---
 

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { duelAPI, puzzleAPI } from '@/lib/api';
 import { useDuelWebSocket } from '@/lib/websocket';
-import CarnapFitchEditor from '@/components/CarnapFitchEditor';
+import CarnapFitchEditor from '@/components/LazyCarnapFitchEditor';
 import { useAuth } from '@/lib/auth/AuthContext';
 import AuthGuard from '@/components/AuthGuard';
 
@@ -78,6 +78,8 @@ export default function DuelPage() {
   const [timeLeft, setTimeLeft] = useState(180); // 3 minutes in seconds
   const [playerTime, setPlayerTime] = useState(180);
   const [opponentTime, setOpponentTime] = useState(180);
+  const [winner, setWinner] = useState<number | null>(null);
+  const [gameComplete, setGameComplete] = useState(false);
   
   // Difficulty selection
   const [difficulty, setDifficulty] = useState<number | undefined>(undefined);
@@ -87,7 +89,7 @@ export default function DuelPage() {
     isConnected, 
     messages, 
     sendMessage, 
-    submitProof, 
+    submitProof: submitProofWS, 
     updateTime, 
     sendChatMessage, 
     surrender,
@@ -119,69 +121,30 @@ export default function DuelPage() {
     return () => clearInterval(interval);
   }, [inQueue, gameId]);
   
-  // Process WebSocket messages
+  // Process WebSocket messages for game state updates
   useEffect(() => {
     if (messages && messages.length > 0) {
       const latestMessage = messages[messages.length - 1];
       
-      switch (latestMessage.type) {
-        case 'round_update':
-          // Update round status
-          if (game) {
-            const updatedGame = { ...game };
-            const roundIndex = updatedGame.game_rounds.findIndex((r: Round) => r.id === latestMessage.round_id);
-            
-            if (roundIndex !== -1) {
-              updatedGame.game_rounds[roundIndex] = {
-                ...updatedGame.game_rounds[roundIndex],
-                winner: latestMessage.winner,
-                ended: latestMessage.timestamp,
-              };
-              
-              setGame(updatedGame);
-              
-              // If the current round is over, move to the next round
-              if (currentRound && currentRound.id === latestMessage.round_id) {
-                const nextRoundIndex = currentRound.round_number;
-                if (nextRoundIndex < updatedGame.game_rounds.length) {
-                  const nextRound = updatedGame.game_rounds[nextRoundIndex];
-                  setCurrentRound(nextRound);
-                  fetchPuzzle(nextRound.puzzle_id);
-                  setProof('');
-                  setResponse(null);
-                }
-              }
-            }
-          }
-          break;
-          
-        case 'game_over':
-          // Update game status
-          if (game) {
-            setGame({
-              ...game,
-              winner: latestMessage.winner,
-              ended: latestMessage.timestamp,
-              player_a_rating_change: latestMessage.player_a_rating_change,
-              player_b_rating_change: latestMessage.player_b_rating_change,
-            });
-          }
-          break;
-          
-        case 'opponent_time':
-          // Update opponent's time
-          setOpponentTime(latestMessage.time_left);
-          break;
-          
-        default:
-          break;
+      // Handle submission_failed messages for invalid proofs
+      if (latestMessage.type === 'submission_failed' && latestMessage.user_id === userId) {
+        // Apply time penalty
+        setPlayerTime(prevTime => Math.max(0, prevTime - 15));
+        setResponse({
+          verdict: false,
+          error_message: latestMessage.error || 'Invalid proof',
+          processing_time: 0,
+          round_winner: null,
+          game_winner: null,
+          rating_change: null
+        });
       }
     }
-  }, [messages, game, currentRound]);
+  }, [messages, userId]);
   
   // Timer countdown
   useEffect(() => {
-    if (!gameId || !currentRound || currentRound.winner) return;
+    if (!gameId || !currentRound || currentRound.winner || gameComplete) return;
     
     const timer = setInterval(() => {
       setTimeLeft((prevTime) => {
@@ -201,7 +164,7 @@ export default function DuelPage() {
     }, 1000);
     
     return () => clearInterval(timer);
-  }, [gameId, currentRound, isConnected, sendMessage, playerTime, userId, updateTime]);
+  }, [gameId, currentRound, isConnected, sendMessage, playerTime, userId, updateTime, gameComplete]);
   
   // Handle WebSocket messages
   useEffect(() => {
@@ -211,25 +174,49 @@ export default function DuelPage() {
     switch (latestMessage.type) {
       case 'round_complete':
         // Handle round completion
-        if (latestMessage.round_winner) {
-          setWinner(latestMessage.round_winner);
-          if (latestMessage.game_winner) {
-            setGameComplete(true);
+        if (latestMessage.round_winner && game && currentRound) {
+          // Update the current round
+          const updatedRound = { ...currentRound, winner: latestMessage.round_winner };
+          setCurrentRound(updatedRound);
+          
+          // Update the game rounds
+          const updatedGame = { ...game };
+          const roundIndex = updatedGame.game_rounds.findIndex((r: Round) => r.id === latestMessage.round_id);
+          
+          if (roundIndex !== -1) {
+            updatedGame.game_rounds[roundIndex] = updatedRound;
+            setGame(updatedGame);
           }
-        }
-        // Update current round with submission results
-        if (latestMessage.submission) {
-          setCurrentRound(prev => prev ? {
-            ...prev,
-            submissions: [...(prev.submissions || []), latestMessage.submission]
-          } : null);
+          
+          // Move to next round if available
+          const nextRoundIndex = currentRound.round_number + 1;
+          if (nextRoundIndex < updatedGame.game_rounds.length && !latestMessage.game_winner) {
+            const nextRound = updatedGame.game_rounds[nextRoundIndex];
+            setCurrentRound(nextRound);
+            fetchPuzzle(nextRound.puzzle_id);
+            setProof('');
+            setResponse(null);
+            setTimeLeft(180);
+            setPlayerTime(180);
+            setOpponentTime(180);
+          }
         }
         break;
       case 'game_complete':
         // Handle game completion
-        if (latestMessage.game_winner !== undefined) {
+        if (latestMessage.game_winner !== undefined && game) {
           setWinner(latestMessage.game_winner);
           setGameComplete(true);
+          
+          // Update game with final state
+          const updatedGame = {
+            ...game,
+            winner: latestMessage.game_winner,
+            ended: new Date().toISOString(),
+            player_a_rating_change: latestMessage.player_a_rating_change,
+            player_b_rating_change: latestMessage.player_b_rating_change
+          };
+          setGame(updatedGame);
         }
         break;
       case 'time_update':
@@ -302,7 +289,7 @@ export default function DuelPage() {
   };
   
   // Fetch puzzle details
-  const fetchPuzzle = async (id: number) => {
+  const fetchPuzzle = useCallback(async (id: number) => {
     try {
       const puzzleData = await puzzleAPI.getPuzzle(id);
       setPuzzle(puzzleData);
@@ -310,7 +297,7 @@ export default function DuelPage() {
       console.error('Error fetching puzzle:', error);
       alert('Failed to fetch puzzle details. Please try again.');
     }
-  };
+  }, []);
   
   // Submit proof for duel
   const submitProof = async () => {
@@ -514,7 +501,7 @@ export default function DuelPage() {
               
               <div className="mb-6">
                 <div className="font-semibold text-lg mb-2">Current Status: </div>
-                {game.winner ? (
+                {game.winner || gameComplete ? (
                   <div
                     className={`p-4 rounded-lg ${
                       game.winner === userId
@@ -553,7 +540,7 @@ export default function DuelPage() {
                 )}
               </div>
               
-              {!game.winner && (
+              {!game.winner && !gameComplete && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div>
                     <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-md">
@@ -601,7 +588,7 @@ export default function DuelPage() {
                     <div className="mt-4">
                       <button
                         onClick={submitProof}
-                        disabled={submitting || !proof.trim() || currentRound.winner !== undefined}
+                        disabled={submitting || !proof.trim() || currentRound.winner !== undefined || gameComplete}
                         className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors disabled:opacity-50 w-full"
                       >
                         {submitting ? 'Submitting...' : 'Submit Proof'}

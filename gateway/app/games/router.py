@@ -403,14 +403,41 @@ async def submit_duel_proof(
     
     await db.commit()
     
-    # Notify other player via WebSocket (would be implemented in a real application)
-    background_tasks.add_task(
-        notify_opponent_of_submission,
-        game_id=game.id,
-        user_id=current_user.id,
-        verdict=verdict,
-        round_id=round_obj.id
-    )
+    # Notify players via WebSocket about round/game results
+    if verdict:
+        # Broadcast round completion
+        await publish_game_event("round_complete", {
+            "game_id": game.id,
+            "round_id": round_obj.id,
+            "round_winner": current_user.id,
+            "round_number": round_obj.round_number,
+            "submission": {
+                "user_id": current_user.id,
+                "verdict": verdict,
+                "timestamp": new_submission.created.isoformat()
+            }
+        })
+        
+        # If game is over, broadcast game completion
+        if response.game_winner:
+            await publish_game_event("game_complete", {
+                "game_id": game.id,
+                "game_winner": response.game_winner,
+                "player_a_rating_change": game.player_a_rating_change,
+                "player_b_rating_change": game.player_b_rating_change,
+                "final_score": {
+                    "player_a": rounds_won_a_count,
+                    "player_b": rounds_won_b_count
+                }
+            })
+    else:
+        # Notify about invalid submission (time penalty)
+        await publish_game_event("submission_failed", {
+            "game_id": game.id,
+            "user_id": current_user.id,
+            "round_id": round_obj.id,
+            "error": error_message
+        })
     
     return response
 
@@ -445,16 +472,6 @@ async def calculate_elo_rating_changes(
         "player_b_change": player_b_change
     }
 
-async def notify_opponent_of_submission(
-    game_id: int,
-    user_id: int,
-    verdict: bool,
-    round_id: int
-):
-    """Notify the opponent via WebSocket of a submission (would be implemented in a real app)"""
-    # This is a stub function that would be implemented in a real application
-    # It would use Redis pub/sub to notify the WebSocket manager
-    pass
 
 @router.post("/duel/check-match", response_model=Optional[DuelMatchResponse])
 async def check_duel_match(

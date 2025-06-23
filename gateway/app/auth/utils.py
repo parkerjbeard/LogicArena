@@ -11,7 +11,7 @@ import logging
 
 from app.config import settings
 from app.db.session import get_db
-from app.models import User
+from app.models import User, RevokedToken, UserSession
 
 # Password context for hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -30,7 +30,7 @@ def get_password_hash(password: str) -> str:
     """Generate a password hash"""
     return pwd_context.hash(password)
 
-def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None, session_id: Optional[str] = None) -> str:
     """Create a new JWT token with enhanced security"""
     to_encode = data.copy()
     now = datetime.now(timezone.utc)
@@ -46,8 +46,13 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
         "iat": now,
         "jti": secrets.token_urlsafe(32),  # Unique token ID for revocation
         "iss": "logicarena-api",  # Issuer
-        "aud": "logicarena-client"  # Audience
+        "aud": "logicarena-client",  # Audience
+        "type": "access"
     })
+    
+    # Add session ID if provided
+    if session_id:
+        to_encode["sid"] = session_id
     
     encoded_jwt = jwt.encode(
         to_encode, 
@@ -57,7 +62,7 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     
     return encoded_jwt
 
-def create_refresh_token(data: Dict[str, Any]) -> str:
+def create_refresh_token(data: Dict[str, Any], session_id: Optional[str] = None) -> str:
     """Create a refresh token with longer expiration"""
     to_encode = data.copy()
     now = datetime.now(timezone.utc)
@@ -71,6 +76,10 @@ def create_refresh_token(data: Dict[str, Any]) -> str:
         "aud": "logicarena-refresh",
         "type": "refresh"
     })
+    
+    # Add session ID if provided
+    if session_id:
+        to_encode["sid"] = session_id
     
     return jwt.encode(
         to_encode,
@@ -109,6 +118,93 @@ def verify_refresh_token(token: str) -> Dict[str, Any]:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+async def is_token_revoked(jti: str, db: AsyncSession) -> bool:
+    """Check if a token has been revoked"""
+    result = await db.execute(
+        select(RevokedToken).filter(RevokedToken.jti == jti)
+    )
+    return result.scalars().first() is not None
+
+async def is_session_valid(session_id: str, db: AsyncSession) -> bool:
+    """Check if a session is valid and active"""
+    result = await db.execute(
+        select(UserSession).filter(
+            UserSession.session_id == session_id,
+            UserSession.is_active == True,
+            UserSession.expires_at > datetime.now(timezone.utc)
+        )
+    )
+    session = result.scalars().first()
+    
+    if session:
+        # Update last activity
+        session.last_activity = datetime.now(timezone.utc)
+        db.add(session)
+        await db.commit()
+        return True
+    
+    return False
+
+async def revoke_token(jti: str, user_id: int, token_type: str, expires_at: datetime, reason: str, db: AsyncSession):
+    """Revoke a token by adding it to the blacklist"""
+    revoked_token = RevokedToken(
+        jti=jti,
+        user_id=user_id,
+        token_type=token_type,
+        expires_at=expires_at,
+        reason=reason
+    )
+    db.add(revoked_token)
+    await db.commit()
+
+async def create_user_session(
+    user_id: int, 
+    refresh_token_jti: str,
+    ip_address: Optional[str] = None,
+    user_agent: Optional[str] = None,
+    db: AsyncSession = None
+) -> str:
+    """Create a new user session"""
+    session_id = secrets.token_urlsafe(32)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=settings.JWT_REFRESH_EXPIRATION_DAYS)
+    
+    session = UserSession(
+        user_id=user_id,
+        session_id=session_id,
+        refresh_token_jti=refresh_token_jti,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        expires_at=expires_at
+    )
+    db.add(session)
+    await db.commit()
+    
+    return session_id
+
+async def invalidate_user_sessions(user_id: int, db: AsyncSession, reason: str = "logout"):
+    """Invalidate all active sessions for a user"""
+    result = await db.execute(
+        select(UserSession).filter(
+            UserSession.user_id == user_id,
+            UserSession.is_active == True
+        )
+    )
+    sessions = result.scalars().all()
+    
+    for session in sessions:
+        session.is_active = False
+        # Also revoke the associated refresh token
+        await revoke_token(
+            jti=session.refresh_token_jti,
+            user_id=user_id,
+            token_type="refresh",
+            expires_at=session.expires_at,
+            reason=reason,
+            db=db
+        )
+    
+    await db.commit()
+
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db)
@@ -137,9 +233,27 @@ async def get_current_user(
             }
         )
         user_id: str = payload.get("sub")
+        jti: str = payload.get("jti")
+        session_id: str = payload.get("sid")
         
-        if user_id is None:
+        if user_id is None or jti is None:
             raise credentials_exception
+        
+        # Check if token is revoked
+        if await is_token_revoked(jti, db):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Check if session is valid (if session ID is present)
+        if session_id and not await is_session_valid(session_id, db):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired session",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
             
     except (jwt.InvalidTokenError, jwt.ExpiredSignatureError, jwt.InvalidSignatureError):
         raise credentials_exception
@@ -175,7 +289,7 @@ async def get_current_admin_user(
         )
     return current_user
 
-def verify_token(token: str) -> Optional[str]:
+async def verify_token(token: str, db: AsyncSession) -> Optional[str]:
     """
     Verify JWT token and return user ID
     Used for WebSocket authentication where we can't use dependencies
@@ -199,6 +313,17 @@ def verify_token(token: str) -> Optional[str]:
             }
         )
         user_id: str = payload.get("sub")
+        jti: str = payload.get("jti")
+        session_id: str = payload.get("sid")
+        
+        # Check if token is revoked
+        if await is_token_revoked(jti, db):
+            return None
+            
+        # Check if session is valid (if session ID is present)
+        if session_id and not await is_session_valid(session_id, db):
+            return None
+            
         return user_id
     except (jwt.InvalidTokenError, jwt.ExpiredSignatureError, jwt.InvalidSignatureError):
         return None 
