@@ -5,6 +5,7 @@ import redis.asyncio as redis
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
+from contextlib import asynccontextmanager
 import os
 import time
 import uuid
@@ -13,14 +14,46 @@ import uuid
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 
 # Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+import sys
+sys.path.append('/app')  # Add shared directory to path
+from shared.logging_config import setup_logging
 
-app = FastAPI(title="Match Service", version="1.0.0")
+# Setup centralized logging with Logstash and Sentry
+logger = setup_logging(
+    service_name="match",
+    log_level=os.getenv("LOG_LEVEL", "INFO")
+)
 
 # Redis client
 redis_client = None
 pubsub = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    global redis_client, pubsub
+    redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+    pubsub = redis_client.pubsub()
+    
+    # Subscribe to game events
+    await pubsub.subscribe("game_events", "proof_checker_results")
+    
+    # Start background tasks
+    asyncio.create_task(handle_game_events())
+    asyncio.create_task(process_queue())
+    logger.info("Match service started")
+    
+    yield
+    
+    # Shutdown
+    if pubsub:
+        await pubsub.unsubscribe()
+        await pubsub.close()
+    if redis_client:
+        await redis_client.close()
+    logger.info("Match service stopped")
+
+app = FastAPI(title="Match Service", version="1.0.0", lifespan=lifespan)
 
 class QueueEntry(BaseModel):
     user_id: int
@@ -43,28 +76,52 @@ class MatchResponse(BaseModel):
     queue_position: Optional[int] = None
     estimated_wait: Optional[int] = None
 
-@app.on_event("startup")
-async def startup():
-    global redis_client, pubsub
-    redis_client = redis.from_url(REDIS_URL, decode_responses=True)
-    pubsub = redis_client.pubsub()
-    
-    # Subscribe to game events
-    await pubsub.subscribe("game_events", "proof_checker_results")
-    
-    # Start background tasks
-    asyncio.create_task(handle_game_events())
-    asyncio.create_task(process_queue())
-    logger.info("Match service started")
 
-@app.on_event("shutdown")
-async def shutdown():
-    if pubsub:
-        await pubsub.unsubscribe()
-        await pubsub.close()
-    if redis_client:
-        await redis_client.close()
-    logger.info("Match service stopped")
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring"""
+    health_status = {
+        "status": "healthy",
+        "service": "match-service",
+        "timestamp": time.time(),
+        "checks": {}
+    }
+    
+    # Check Redis connectivity
+    try:
+        if redis_client:
+            await redis_client.ping()
+            health_status["checks"]["redis"] = {"status": "healthy", "connected": True}
+        else:
+            health_status["checks"]["redis"] = {"status": "unhealthy", "connected": False}
+            health_status["status"] = "unhealthy"
+    except Exception as e:
+        health_status["checks"]["redis"] = {
+            "status": "unhealthy", 
+            "connected": False, 
+            "error": str(e)
+        }
+        health_status["status"] = "unhealthy"
+    
+    # Check queue status
+    try:
+        if redis_client:
+            queue_size = await redis_client.zcard("matchmaking_queue")
+            health_status["checks"]["queue"] = {
+                "status": "healthy",
+                "size": queue_size
+            }
+    except Exception as e:
+        health_status["checks"]["queue"] = {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+    
+    # Return appropriate status code
+    if health_status["status"] == "unhealthy":
+        raise HTTPException(status_code=503, detail=health_status)
+    
+    return health_status
 
 async def handle_game_events():
     """Handle game events from Redis"""

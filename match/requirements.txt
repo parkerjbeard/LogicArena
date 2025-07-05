@@ -6,4 +6,6 @@ asyncio
 python-dotenv
 httpx
 loguru
-pydantic 
+pydantic
+fastapi
+uvicorn 
