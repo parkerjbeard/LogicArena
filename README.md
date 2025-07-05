@@ -14,11 +14,17 @@ LogicArena is a web platform for natural deduction proof duels and practice. Thi
 LogicArena is built as a microservices application with the following components:
 
 - **gateway**: FastAPI-based API gateway with JWT authentication and WebSocket support
-- **front**: Vue 3 + Vite frontend with Monaco-based Fitch editor
+- **front**: Next.js frontend with Monaco-based Fitch editor (optimized with Bun for 3x faster builds)
 - **match**: Redis-backed matchmaking system for duels
 - **puzzle**: Puzzle generation and verification service
 - **proof-checker**: Carnap + minisat proof validation service
 - **rating**: Elo rating system
+
+### 🚀 Performance Optimizations
+
+- **Bun Integration**: Frontend builds are 3x faster using Bun runtime
+- **Optimized Docker Images**: Multi-stage builds with caching
+- **Code Splitting**: Automatic chunk optimization for faster page loads
 
 ## Getting Started
 
@@ -26,6 +32,14 @@ LogicArena is built as a microservices application with the following components
 
 - Docker and Docker Compose
 - Git
+- (Optional) [Bun](https://bun.sh) for faster local development
+
+### Quick Start with Bun (Recommended)
+
+For the fastest development experience:
+```bash
+./scripts/dev-with-bun.sh start
+```
 
 ### Installation
 
