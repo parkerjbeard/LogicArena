@@ -16,16 +16,23 @@ echo -e "${GREEN}Starting optimized build process...${NC}"
 build_service() {
     local service=$1
     local context=$2
-    local dockerfile=${3:-Dockerfile.optimized}
+    local dockerfile=${3:-Dockerfile}
     
     echo -e "${YELLOW}Building $service...${NC}"
+    
+    # Check if we should use the optimized Dockerfile
+    if [ "$USE_OPTIMIZED" == "true" ] && [ -f "docker/dockerfiles/$service/Dockerfile.optimized" ]; then
+        dockerfile="docker/dockerfiles/$service/Dockerfile.optimized"
+    elif [ -f "$context/$dockerfile" ]; then
+        dockerfile="$context/$dockerfile"
+    fi
     
     docker build \
         --cache-from logicarena/$service:latest \
         --build-arg BUILDKIT_INLINE_CACHE=1 \
         -t logicarena/$service:latest \
         -t logicarena/$service:$(date +%Y%m%d-%H%M%S) \
-        -f $context/$dockerfile \
+        -f $dockerfile \
         $context
     
     if [ $? -eq 0 ]; then
@@ -69,14 +76,14 @@ fi
 # Optional: Run with optimized compose
 if [ "$1" == "--run" ] || [ "$2" == "--run" ]; then
     echo -e "${YELLOW}Starting services with optimized configuration...${NC}"
-    docker-compose -f docker-compose.optimized.yml up -d
+    docker-compose -f docker/compose/docker-compose.optimized.yml up -d
     
     # Wait for services to be healthy
     echo -e "${YELLOW}Waiting for services to be healthy...${NC}"
     sleep 10
     
     # Check health status
-    docker-compose -f docker-compose.optimized.yml ps
+    docker-compose -f docker/compose/docker-compose.optimized.yml ps
 fi
 
 echo -e "${GREEN}Build process completed!${NC}"

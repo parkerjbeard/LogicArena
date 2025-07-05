@@ -5,16 +5,36 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
     environment:
-      - DATABASE_URL=postgresql://logicuser:logicpass@postgres:5432/logicarena
+      - DATABASE_URL=${DATABASE_URL:-postgresql://logicuser:${POSTGRES_PASSWORD:-logicpass}@postgres:5432/logicarena}
       - REDIS_URL=redis://redis:6379/0
-      - JWT_SECRET=${JWT_SECRET:-production_secret_key}
+      - JWT_SECRET=${JWT_SECRET}
+      - SECRET_KEY=${SECRET_KEY}
+      - CSRF_SECRET=${CSRF_SECRET}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - PROOF_CHECKER_URL=http://proof-checker:5003
+      - LOGSTASH_HOST=logstash
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DEBUG=true
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./shared:/app/shared:ro
     restart: always
     networks:
       - logic_network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service_name=gateway,application=logicarena"
 
   # Frontend
   front:
@@ -24,9 +44,17 @@ services:
     environment:
       - API_URL=http://localhost:8000
       - WS_URL=ws://localhost:8000
+      - SENTRY_DSN_FRONTEND=${SENTRY_DSN_FRONTEND:-}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
     restart: always
     networks:
       - logic_network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service_name=frontend,application=logicarena"
 
   # Matchmaking Service
   match:
@@ -35,11 +63,23 @@ services:
       - redis
       - postgres
     environment:
-      - DATABASE_URL=postgresql://logicuser:logicpass@postgres:5432/logicarena
+      - DATABASE_URL=${DATABASE_URL:-postgresql://logicuser:${POSTGRES_PASSWORD:-logicpass}@postgres:5432/logicarena}
       - REDIS_URL=redis://redis:6379/0
+      - LOGSTASH_HOST=logstash
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./shared:/app/shared:ro
     restart: always
     networks:
       - logic_network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service_name=matchmaking,application=logicarena"
 
   # Puzzle Service
   puzzle:
@@ -49,12 +89,24 @@ services:
       - redis
       - proof-checker
     environment:
-      - DATABASE_URL=postgresql://logicuser:logicpass@postgres:5432/logicarena
+      - DATABASE_URL=${DATABASE_URL:-postgresql://logicuser:${POSTGRES_PASSWORD:-logicpass}@postgres:5432/logicarena}
       - REDIS_URL=redis://redis:6379/0
       - PROOF_CHECKER_URL=http://proof-checker:5003
+      - LOGSTASH_HOST=logstash
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./shared:/app/shared:ro
     restart: always
     networks:
       - logic_network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service_name=puzzle,application=logicarena"
 
   # Proof Checker Service
   proof-checker:
@@ -63,6 +115,13 @@ services:
       dockerfile: Dockerfile.simple
     ports:
       - "5003:5003"
+    environment:
+      - LOGSTASH_HOST=logstash
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./shared:/app/shared:ro
     restart: always
     networks:
       - logic_network
@@ -70,6 +129,12 @@ services:
       resources:
         limits:
           memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service_name=proof-checker,application=logicarena"
 
   # Rating Service
   rating:
@@ -78,19 +143,31 @@ services:
       - postgres
       - redis
     environment:
-      - DATABASE_URL=postgresql://logicuser:logicpass@postgres:5432/logicarena
+      - DATABASE_URL=${DATABASE_URL:-postgresql://logicuser:${POSTGRES_PASSWORD:-logicpass}@postgres:5432/logicarena}
       - REDIS_URL=redis://redis:6379/0
+      - LOGSTASH_HOST=logstash
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./shared:/app/shared:ro
     restart: always
     networks:
       - logic_network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service_name=rating,application=logicarena"
 
   # PostgreSQL Database
   postgres:
     image: postgres:15
     environment:
-      - POSTGRES_USER=logicuser
-      - POSTGRES_PASSWORD=logicpass
-      - POSTGRES_DB=logicarena
+      - POSTGRES_USER=${POSTGRES_USER:-logicuser}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-logicarena}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: always
