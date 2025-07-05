@@ -12,7 +12,9 @@ import {
   ServerIcon,
   ClockIcon,
   CheckCircleIcon,
-  XCircleIcon
+  XCircleIcon,
+  AcademicCapIcon,
+  BellIcon
 } from '@heroicons/react/24/outline';
 import api from '@/lib/api';
 import AdminGuard from '@/components/AdminGuard';
@@ -41,17 +43,35 @@ interface SystemStats {
   };
 }
 
+interface InstructorRequest {
+  id: number;
+  user_id: number;
+  institution_name: string;
+  course_info: string;
+  faculty_url: string | null;
+  faculty_id: string | null;
+  status: string;
+  submitted_at: string;
+  user?: {
+    handle: string;
+    email: string;
+  };
+}
+
 export default function AdminDashboard() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [pendingRequests, setPendingRequests] = useState<InstructorRequest[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(true);
 
   // Admin check is now handled by AdminGuard wrapper
 
   useEffect(() => {
     if (user?.is_admin) {
       fetchStats();
+      fetchPendingRequests();
     }
   }, [user]);
 
@@ -63,6 +83,17 @@ export default function AdminDashboard() {
       console.error('Failed to fetch stats:', error);
     } finally {
       setStatsLoading(false);
+    }
+  };
+
+  const fetchPendingRequests = async () => {
+    try {
+      const response = await api.get('/api/instructor/requests?status=pending');
+      setPendingRequests(response.data);
+    } catch (error) {
+      console.error('Failed to fetch instructor requests:', error);
+    } finally {
+      setRequestsLoading(false);
     }
   };
 
@@ -166,6 +197,35 @@ export default function AdminDashboard() {
             </motion.button>
           </div>
         </div>
+
+        {/* Instructor Requests */}
+        {!requestsLoading && pendingRequests.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              <AcademicCapIcon className="h-5 w-5" />
+              Pending Instructor Requests
+              <span className="bg-yellow-500 text-black text-xs font-bold px-2 py-1 rounded-full">
+                {pendingRequests.length}
+              </span>
+            </h2>
+            <div className="bg-yellow-900/20 backdrop-blur-sm border border-yellow-600/30 rounded-lg p-6">
+              <div className="flex items-start gap-3 mb-4">
+                <BellIcon className="h-5 w-5 text-yellow-400 mt-0.5" />
+                <p className="text-yellow-400">
+                  There are {pendingRequests.length} instructor access requests waiting for review.
+                </p>
+              </div>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => router.push('/admin/instructor-requests')}
+                className="px-4 py-2 bg-yellow-600 text-black font-medium rounded-lg hover:bg-yellow-500 transition-colors"
+              >
+                Review Requests
+              </motion.button>
+            </div>
+          </div>
+        )}
 
         {/* System Statistics */}
         {statsLoading ? (

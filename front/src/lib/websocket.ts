@@ -11,7 +11,7 @@ export enum ConnectionState {
   FAILED = 'failed'
 }
 
-interface DuelMessage {
+export interface DuelMessage {
   type: string;
   user_id?: number;
   game_id?: number;
@@ -25,9 +25,13 @@ interface DuelMessage {
   submission?: any;
   time_left?: number;
   message?: string;
+  error?: string;
+  round_id?: number;
+  player_a_rating_change?: number;
+  player_b_rating_change?: number;
 }
 
-interface NotificationMessage {
+export interface NotificationMessage {
   type: string;
   user_id?: number;
   data?: any;
@@ -145,7 +149,9 @@ export function useDuelWebSocket(gameId: number, userId: number, config?: Partia
       setConnectionState(reconnectAttempts.current > 0 ? ConnectionState.RECONNECTING : ConnectionState.CONNECTING);
       setConnectionError(null);
 
-      const wsUrl = `ws://localhost:8000/ws/duel/${gameId}?token=${encodeURIComponent(token)}`;
+      const baseUrl = process.env.NEXT_PUBLIC_WS_URL || 
+        (process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/^http/, 'ws') : 'ws://localhost:8000');
+      const wsUrl = `${baseUrl}/ws/duel/${gameId}?token=${encodeURIComponent(token)}`;
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
@@ -446,7 +452,9 @@ export function useNotificationsWebSocket(userId: number, config?: Partial<Recon
       setConnectionState(reconnectAttempts.current > 0 ? ConnectionState.RECONNECTING : ConnectionState.CONNECTING);
       setConnectionError(null);
 
-      const wsUrl = `ws://localhost:8000/ws/notifications/${userId}?token=${encodeURIComponent(token)}`;
+      const baseUrl = process.env.NEXT_PUBLIC_WS_URL || 
+        (process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/^http/, 'ws') : 'ws://localhost:8000');
+      const wsUrl = `${baseUrl}/ws/notifications/${userId}?token=${encodeURIComponent(token)}`;
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {

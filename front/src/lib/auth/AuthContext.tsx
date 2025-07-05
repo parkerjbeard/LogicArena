@@ -10,6 +10,7 @@ interface User {
   email: string;
   rating: number;
   is_admin?: boolean;
+  is_instructor?: boolean;
 }
 
 interface AuthContextType {

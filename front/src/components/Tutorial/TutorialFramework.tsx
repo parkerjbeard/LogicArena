@@ -42,9 +42,11 @@ export const TutorialFramework: React.FC<TutorialFrameworkProps> = ({
       setShowHint(false);
       setValidationMessage(null);
     } else {
+      // On complete, call onComplete and then exit
       onComplete();
+      onExit();
     }
-  }, [currentStep, steps.length, onComplete]);
+  }, [currentStep, steps.length, onComplete, onExit]);
 
   const handlePrevious = useCallback(() => {
     if (currentStep > 0) {

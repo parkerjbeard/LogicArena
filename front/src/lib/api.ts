@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { UserStatistics, PuzzleSubmissionHistory, PuzzleHint } from '@/types/statistics';
 
 // Create an Axios instance with default configuration
 const api = axios.create({
@@ -76,7 +77,16 @@ api.interceptors.response.use(
 // Auth API
 export const authAPI = {
   login: async (email: string, password: string) => {
-    const response = await api.post('/api/auth/login/email', { email, password });
+    // OAuth2PasswordRequestForm expects URL-encoded form data
+    const params = new URLSearchParams();
+    params.append('username', email);  // OAuth2PasswordRequestForm expects 'username'
+    params.append('password', password);
+    
+    const response = await api.post('/api/auth/login', params, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
     return response.data;
   },
   
@@ -109,12 +119,23 @@ export const puzzleAPI = {
     return response.data;
   },
   
-  submitProof: async (puzzleId: number, proof: string) => {
+  submitProof: async (puzzleId: number, proof: string, hintsUsed: number = 0) => {
     const response = await api.post('/api/puzzles/submit', {
       puzzle_id: puzzleId,
       payload: proof,
+      hints_used: hintsUsed,
     });
     return response.data;
+  },
+  
+  getHints: async (puzzleId: number): Promise<PuzzleHint[]> => {
+    try {
+      const response = await api.get(`/api/puzzles/${puzzleId}/hints`);
+      return response.data;
+    } catch (error) {
+      // Return empty array for now until backend is implemented
+      return [];
+    }
   },
 };
 
@@ -169,6 +190,38 @@ export const userAPI = {
     });
     return response.data;
   },
+  
+  getPracticeStats: async (): Promise<UserStatistics> => {
+    try {
+      const response = await api.get('/api/users/practice-stats');
+      return response.data;
+    } catch (error) {
+      // Return mock data for now until backend is implemented
+      return {
+        total_puzzles_solved: 0,
+        total_puzzles_attempted: 0,
+        success_rate: 0,
+        average_solving_time: 0,
+        puzzles_by_difficulty: {},
+        current_streak: 0,
+        longest_streak: 0,
+        total_hints_used: 0,
+        perfect_solutions: 0,
+      };
+    }
+  },
+  
+  getPracticeHistory: async (limit = 20, offset = 0): Promise<PuzzleSubmissionHistory[]> => {
+    try {
+      const response = await api.get('/api/users/practice-history', {
+        params: { limit, offset },
+      });
+      return response.data;
+    } catch (error) {
+      // Return empty array for now until backend is implemented
+      return [];
+    }
+  },
 };
 
 // Leaderboard API
@@ -178,6 +231,42 @@ export const leaderboardAPI = {
       params: { page, size },
     });
     return response.data;
+  },
+};
+
+// Progress API for saving drafts
+export const progressAPI = {
+  saveDraft: async (puzzleId: number, draft: string) => {
+    try {
+      const response = await api.post('/api/progress/save-draft', {
+        puzzle_id: puzzleId,
+        draft,
+      });
+      return response.data;
+    } catch (error) {
+      // Silent fail, localStorage is the backup
+      return { success: false };
+    }
+  },
+  
+  getDraft: async (puzzleId: number) => {
+    try {
+      const response = await api.get(`/api/progress/draft/${puzzleId}`);
+      return response.data;
+    } catch (error) {
+      // Return null if no draft found
+      return { draft: null };
+    }
+  },
+  
+  clearDraft: async (puzzleId: number) => {
+    try {
+      const response = await api.delete(`/api/progress/draft/${puzzleId}`);
+      return response.data;
+    } catch (error) {
+      // Silent fail
+      return { success: false };
+    }
   },
 };
 

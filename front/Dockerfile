@@ -1,12 +1,13 @@
-FROM node:18-alpine AS base
+FROM oven/bun:1-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
 WORKDIR /app
 
 # Copy package files
-COPY package.json ./
-RUN npm install
+COPY package.json bun.lockb* ./
+# Use Bun's fast installer with frozen lockfile for consistency
+RUN bun install --frozen-lockfile
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -16,10 +17,10 @@ COPY . .
 
 # Next.js collects completely anonymous telemetry data about general usage.
 # Learn more here: https://nextjs.org/telemetry
-# Uncomment the following line in case you want to disable telemetry.
 ENV NEXT_TELEMETRY_DISABLED 1
 
-RUN npm run build
+# Use Bun to run the build
+RUN bun run build
 
 # Production image, copy all the files and run next
 FROM base AS runner
@@ -44,4 +45,5 @@ EXPOSE 3000
 
 ENV PORT 3000
 
-CMD ["node", "server.js"] 
+# Use Bun runtime for better performance
+CMD ["bun", "run", "server.js"]

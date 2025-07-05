@@ -1,9 +1,13 @@
 'use client';
 
 import React, { useRef, useEffect, useState } from 'react';
-import { Editor, Monaco } from '@monaco-editor/react';
-import type { editor } from 'monaco-editor';
+import dynamic from 'next/dynamic';
 import { InfoIcon } from 'lucide-react';
+
+const MonacoEditorWrapper = dynamic(
+  () => import('./MonacoEditorWrapper'),
+  { ssr: false }
+);
 
 interface CarnapFitchEditorProps {
   value: string;
@@ -24,12 +28,13 @@ const CarnapFitchEditor: React.FC<CarnapFitchEditorProps> = ({
   theme = 'light',
   showSyntaxGuide = true,
 }) => {
-  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
-  const monacoRef = useRef<Monaco | null>(null);
+  const editorRef = useRef<any>(null);
+  const monacoRef = useRef<any>(null);
   const [showGuide, setShowGuide] = useState(false);
+  const disposablesRef = useRef<any[]>([]);
   
   // Configure Monaco editor
-  const handleEditorDidMount = (editor: editor.IStandaloneCodeEditor, monaco: Monaco) => {
+  const handleEditorDidMount = (editor: any, monaco: any) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
     
@@ -170,11 +175,11 @@ const CarnapFitchEditor: React.FC<CarnapFitchEditorProps> = ({
       },
     });
     
-    // Set the theme
+    // Set the theme based on prop
     monaco.editor.setTheme(theme === 'light' ? 'carnap-light' : 'carnap-dark');
     
     // Handle Tab key for proper indentation
-    editor.addCommand(monaco.KeyCode.Tab, () => {
+    const tabDisposable = editor.addCommand(monaco.KeyCode.Tab, () => {
       const selection = editor.getSelection();
       if (selection) {
         const position = selection.getPosition();
@@ -195,9 +200,10 @@ const CarnapFitchEditor: React.FC<CarnapFitchEditorProps> = ({
         }
       }
     });
+    disposablesRef.current.push(tabDisposable);
     
     // Handle Enter key for smart indentation
-    editor.addCommand(monaco.KeyCode.Enter, () => {
+    const enterDisposable = editor.addCommand(monaco.KeyCode.Enter, () => {
       const position = editor.getPosition();
       if (position) {
         const model = editor.getModel();
@@ -222,10 +228,12 @@ const CarnapFitchEditor: React.FC<CarnapFitchEditorProps> = ({
         }
       }
     });
+    disposablesRef.current.push(enterDisposable);
     
     // Add keyboard shortcut for submission
     if (onSubmit) {
-      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, onSubmit);
+      const submitDisposable = editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, onSubmit);
+      disposablesRef.current.push(submitDisposable);
     }
   };
   
@@ -235,6 +243,21 @@ const CarnapFitchEditor: React.FC<CarnapFitchEditorProps> = ({
       onChange(value);
     }
   };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Dispose of all commands and event listeners
+      disposablesRef.current.forEach(disposable => disposable.dispose());
+      disposablesRef.current = [];
+      
+      // Dispose of editor if it exists
+      if (editorRef.current) {
+        editorRef.current.dispose();
+        editorRef.current = null;
+      }
+    };
+  }, []);
   
   // Example templates
   const insertTemplate = (template: string) => {
@@ -332,7 +355,7 @@ const CarnapFitchEditor: React.FC<CarnapFitchEditorProps> = ({
       )}
       
       <div className={`border border-gray-700 ${showSyntaxGuide ? 'rounded-b-lg' : 'rounded-lg'} overflow-hidden`}>
-        <Editor
+        <MonacoEditorWrapper
           height={height}
           language="carnap-fitch"
           value={value}
@@ -341,7 +364,7 @@ const CarnapFitchEditor: React.FC<CarnapFitchEditorProps> = ({
           options={{
             automaticLayout: true,
           }}
-          theme="vs-dark"
+          theme={theme === 'light' ? 'carnap-light' : 'carnap-dark'}
         />
         {!readOnly && (
           <div className="bg-gray-800 p-2 flex justify-between items-center">
