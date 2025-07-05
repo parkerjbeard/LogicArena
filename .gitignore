@@ -16,6 +16,8 @@ pnpm-debug.log*
 out/
 build/
 dist/
+next-env.d.ts
+tsconfig.tsbuildinfo
 
 # Next.js cache
 .next/cache/
@@ -115,6 +117,8 @@ cython_debug/
 
 # Environment variables
 .env
+.env.*
+!.env.example
 .env.local
 .env.development.local
 .env.test.local
@@ -381,3 +385,37 @@ deployment-artifacts/
 
 # Kubernetes
 kustomization.yaml.bak
+
+# ====================
+# DOCUMENTATION
+# ====================
+
+# Claude documentation folder
+claude_docs/
+
+# Markdown documentation files (temporary/generated)
+*.md
+!README.md
+!CLAUDE.md
+
+# Development artifacts
+.dev-pids
+backup/
+
+# Production-specific files (keep local)
+docker-compose.prod.yml
+front/Dockerfile.prod
+gateway/Dockerfile.prod
+match/Dockerfile.prod
+proof-checker/Dockerfile.prod
+nginx/nginx.prod.conf
+
+# Generated lock files (keep npm, but exclude others)
+front/bun.lock
+
+# Monitoring and scripts (development only)
+monitoring/
+scripts/
+
+# Shared directory (if temporary)
+shared/
