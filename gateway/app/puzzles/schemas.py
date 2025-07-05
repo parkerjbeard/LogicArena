@@ -17,13 +17,13 @@ class PuzzleResponse(PuzzleBase):
     created: datetime.datetime
     
     class Config:
-        orm_mode = True
+        from_attributes = True
         
 class PuzzleDetail(PuzzleResponse):
     machine_proof: Optional[str] = None
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ProofSubmission(BaseModel):
     puzzle_id: int

@@ -10,7 +10,7 @@ class UserProfileResponse(BaseModel):
     created: datetime.datetime
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class UserStatsResponse(BaseModel):
     total_games: int
@@ -33,7 +33,7 @@ class UserSubmissionResponse(BaseModel):
     created: datetime.datetime
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class LeaderboardEntry(BaseModel):
     id: int
@@ -43,7 +43,7 @@ class LeaderboardEntry(BaseModel):
     games_played: int
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class LeaderboardResponse(BaseModel):
     rankings: List[LeaderboardEntry]

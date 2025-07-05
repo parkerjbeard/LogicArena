@@ -13,10 +13,12 @@ from fastapi_limiter import FastAPILimiter
 import asyncio
 
 from app.auth.router import router as auth_router
+from app.auth.simple_router import router as oauth_router
 from app.users.router import router as users_router
 from app.puzzles.router import router as puzzles_router
 from app.games.router import router as games_router
 from app.admin.router import router as admin_router
+from app.instructor.router import router as instructor_router
 from app.config import settings
 from app.db.session import engine, get_db, pool_monitor, close_db_connections, verify_db_connection
 from app.db.health import db_health_checker
@@ -26,11 +28,15 @@ from app.websocket.manager import ConnectionManager
 from app.middleware.logging_middleware import LoggingMiddleware
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+import sys
+sys.path.append('/app')  # Add shared directory to path
+from shared.logging_config import setup_logging
+
+# Setup centralized logging with Logstash and Sentry
+logger = setup_logging(
+    service_name="gateway",
+    log_level=os.getenv("LOG_LEVEL", "INFO")
 )
-logger = logging.getLogger(__name__)
 
 # Create FastAPI app
 app = FastAPI(
@@ -38,6 +44,10 @@ app = FastAPI(
     description="API Gateway for the LogicArena platform",
     version="0.1.0",
 )
+
+# Add session middleware for OAuth (required by Authlib)
+from starlette.middleware.sessions import SessionMiddleware
+app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
 
 # Configure security middleware (includes CORS)
 from app.security import configure_security_middleware
@@ -53,7 +63,8 @@ app.add_middleware(LoggingMiddleware)
 # Add database middleware for error handling and monitoring
 from app.middleware.database import DatabaseMiddleware, ConnectionPoolMiddleware
 app.add_middleware(DatabaseMiddleware)
-app.add_middleware(ConnectionPoolMiddleware)
+# Temporarily disable ConnectionPoolMiddleware due to compatibility issues
+# app.add_middleware(ConnectionPoolMiddleware)
 
 # Initialize WebSocket connection manager
 connection_manager = ConnectionManager()
@@ -98,6 +109,8 @@ async def process_game_events():
 
 # Include routers
 app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
+# Include simplified OAuth routes
+app.include_router(oauth_router, prefix="/api/auth", tags=["OAuth"])
 app.include_router(
     users_router, 
     prefix="/api/users", 
@@ -118,13 +131,32 @@ app.include_router(
     prefix="/api/admin", 
     tags=["Admin"]
 )
+app.include_router(
+    instructor_router,
+    prefix="/api/instructor",
+    tags=["Instructor"]
+)
 
 @app.on_event("startup")
 async def startup():
-    # Verify database connection
-    if not await verify_db_connection():
-        logger.error("Failed to connect to database")
-        raise RuntimeError("Database connection failed")
+    # Validate configuration
+    from app.validate_config import validate_config
+    if not validate_config():
+        logger.error("Configuration validation failed")
+        raise RuntimeError("Invalid configuration - missing required secrets")
+    
+    # Verify database connection with retries
+    max_retries = 5
+    retry_delay = 2
+    for attempt in range(max_retries):
+        if await verify_db_connection():
+            break
+        if attempt < max_retries - 1:
+            logger.warning(f"Database connection failed, retrying in {retry_delay} seconds... (attempt {attempt + 1}/{max_retries})")
+            await asyncio.sleep(retry_delay)
+        else:
+            logger.error("Failed to connect to database after all retries")
+            raise RuntimeError("Database connection failed")
     
     # Create database tables
     async with engine.begin() as conn:

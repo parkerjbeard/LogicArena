@@ -21,6 +21,7 @@ POOL_PRE_PING = settings.DB_POOL_PRE_PING  # Test connections before using them
 database_url = settings.DATABASE_URL
 if database_url.startswith("postgresql://"):
     database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+logger.info(f"Using database URL: {database_url.split('@')[0]}@[REDACTED]")
 
 # Create async engine with connection pooling
 engine: AsyncEngine = create_async_engine(
@@ -33,8 +34,6 @@ engine: AsyncEngine = create_async_engine(
     pool_timeout=POOL_TIMEOUT,
     pool_recycle=POOL_RECYCLE,
     pool_pre_ping=POOL_PRE_PING,
-    # Use QueuePool for better connection management
-    poolclass=QueuePool,
     # Connection arguments for asyncpg
     connect_args={
         "server_settings": {
@@ -81,21 +80,21 @@ class ConnectionPoolMonitor:
         """Monitoring loop that logs pool statistics"""
         while not self._stop_monitoring:
             try:
-                pool = self.engine.pool
-                if pool:
+                stats = self.get_pool_stats()
+                if stats:
                     # Log pool statistics
                     logger.info(
                         f"Connection Pool Stats - "
-                        f"Size: {pool.size()}, "
-                        f"Checked out: {pool.checked_out_connections}, "
-                        f"Overflow: {pool.overflow}, "
-                        f"Total: {pool.size() + pool.overflow}"
+                        f"Size: {stats['size']}, "
+                        f"Checked out: {stats['checked_out']}, "
+                        f"Overflow: {stats['overflow']}, "
+                        f"Total: {stats['total']}"
                     )
                     
                     # Warn if pool is near capacity
-                    if pool.overflow > MAX_OVERFLOW * 0.8:
+                    if stats['overflow'] > MAX_OVERFLOW * 0.8:
                         logger.warning(
-                            f"Connection pool overflow is high: {pool.overflow}/{MAX_OVERFLOW}"
+                            f"Connection pool overflow is high: {stats['overflow']}/{MAX_OVERFLOW}"
                         )
             except Exception as e:
                 logger.error(f"Error monitoring connection pool: {e}")
@@ -106,13 +105,55 @@ class ConnectionPoolMonitor:
         """Get current pool statistics"""
         pool = self.engine.pool
         if pool:
-            return {
-                "size": pool.size(),
-                "checked_out": pool.checked_out_connections,
-                "overflow": pool.overflow,
-                "total": pool.size() + pool.overflow,
-                "max_overflow": MAX_OVERFLOW,
-            }
+            try:
+                # Different attributes for async pools
+                size = 0
+                checked_out = 0
+                overflow = 0
+                
+                # Try to get size
+                if hasattr(pool, 'size'):
+                    try:
+                        size = pool.size()
+                    except:
+                        pass
+                
+                # Try to get checked out - different methods for different pool types
+                if hasattr(pool, 'checked_out'):
+                    try:
+                        checked_out = pool.checked_out()
+                    except:
+                        pass
+                elif hasattr(pool, 'checkedout'):
+                    try:
+                        checked_out = pool.checkedout()
+                    except:
+                        pass
+                
+                # Try to get overflow
+                if hasattr(pool, 'overflow'):
+                    try:
+                        overflow = pool.overflow
+                    except:
+                        pass
+                
+                return {
+                    "size": size,
+                    "checked_out": checked_out,
+                    "overflow": overflow,
+                    "total": size + overflow,
+                    "max_overflow": MAX_OVERFLOW,
+                }
+            except Exception as e:
+                logger.debug(f"Could not get pool stats: {e}")
+                # Return empty stats if pool doesn't support these attributes
+                return {
+                    "size": 0,
+                    "checked_out": 0,
+                    "overflow": 0,
+                    "total": 0,
+                    "max_overflow": MAX_OVERFLOW,
+                }
         return {}
 
 # Create global monitor instance
@@ -154,9 +195,14 @@ async def close_db_connections():
 async def verify_db_connection() -> bool:
     """Verify database connectivity"""
     try:
+        logger.info("Attempting database connection...")
+        from sqlalchemy import text
         async with engine.connect() as conn:
-            await conn.execute("SELECT 1")
+            result = await conn.execute(text("SELECT 1"))
+            logger.info("Database connection successful")
         return True
     except Exception as e:
-        logger.error(f"Database connection verification failed: {e}")
+        logger.error(f"Database connection verification failed: {type(e).__name__}: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return False 

@@ -16,3 +16,4 @@ httpx
 python-dotenv
 asyncpg
 fastapi-limiter
+email-validator

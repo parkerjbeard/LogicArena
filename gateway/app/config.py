@@ -6,24 +6,25 @@ class Settings(BaseSettings):
     # API settings
     APP_NAME: str = "LogicArena API Gateway"
     API_PREFIX: str = "/api"
-    DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
+    DEBUG: bool = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
     
     # Security
-    JWT_SECRET: str = os.getenv("JWT_SECRET", "dev_secret_key_change_in_production")
+    JWT_SECRET: str = os.getenv("JWT_SECRET", "")
     JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
     JWT_EXPIRATION_MINUTES: int = int(os.getenv("JWT_EXPIRATION_MINUTES", "60"))
     JWT_REFRESH_EXPIRATION_DAYS: int = int(os.getenv("JWT_REFRESH_EXPIRATION_DAYS", "7"))
-    CSRF_SECRET: str = os.getenv("CSRF_SECRET", "csrf_secret_change_in_production")
+    CSRF_SECRET: str = os.getenv("CSRF_SECRET", "")
     
     # Google OAuth
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "another_dev_secret_change_me") # Used for session/state signing
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "") # Used for session/state signing
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    API_URL: str = os.getenv("API_URL", "http://localhost:8000")  # Base URL for API callbacks
     OAUTH_STATE_EXPIRY: int = int(os.getenv("OAUTH_STATE_EXPIRY", "600"))  # 10 minutes
     
     # Database
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://logicuser:logicpass@postgres:5432/logicarena")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
     DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "20"))
     DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "10"))
     DB_POOL_TIMEOUT: int = int(os.getenv("DB_POOL_TIMEOUT", "30"))

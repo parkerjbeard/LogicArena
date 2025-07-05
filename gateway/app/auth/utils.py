@@ -131,14 +131,14 @@ async def is_session_valid(session_id: str, db: AsyncSession) -> bool:
         select(UserSession).filter(
             UserSession.session_id == session_id,
             UserSession.is_active == True,
-            UserSession.expires_at > datetime.now(timezone.utc)
+            UserSession.expires_at > datetime.utcnow()  # Use timezone-naive
         )
     )
     session = result.scalars().first()
     
     if session:
-        # Update last activity
-        session.last_activity = datetime.now(timezone.utc)
+        # Update last activity with timezone-naive datetime
+        session.last_activity = datetime.utcnow()
         db.add(session)
         await db.commit()
         return True
@@ -147,6 +147,10 @@ async def is_session_valid(session_id: str, db: AsyncSession) -> bool:
 
 async def revoke_token(jti: str, user_id: int, token_type: str, expires_at: datetime, reason: str, db: AsyncSession):
     """Revoke a token by adding it to the blacklist"""
+    # Convert to timezone-naive if needed
+    if expires_at.tzinfo is not None:
+        expires_at = expires_at.replace(tzinfo=None)
+    
     revoked_token = RevokedToken(
         jti=jti,
         user_id=user_id,
@@ -166,7 +170,8 @@ async def create_user_session(
 ) -> str:
     """Create a new user session"""
     session_id = secrets.token_urlsafe(32)
-    expires_at = datetime.now(timezone.utc) + timedelta(days=settings.JWT_REFRESH_EXPIRATION_DAYS)
+    # Use timezone-naive datetime to match database schema
+    expires_at = datetime.utcnow() + timedelta(days=settings.JWT_REFRESH_EXPIRATION_DAYS)
     
     session = UserSession(
         user_id=user_id,

@@ -25,9 +25,11 @@ async def cleanup_expired_tokens(db: AsyncSession) -> int:
     """
     try:
         # Delete tokens that have passed their original expiration time
+        # Convert to naive UTC datetime for PostgreSQL comparison
+        current_time = datetime.now(timezone.utc).replace(tzinfo=None)
         result = await db.execute(
             delete(RevokedToken).where(
-                RevokedToken.expires_at < datetime.now(timezone.utc)
+                RevokedToken.expires_at < current_time
             )
         )
         await db.commit()
@@ -51,9 +53,11 @@ async def cleanup_expired_sessions(db: AsyncSession) -> int:
     """
     try:
         # Delete sessions that have expired or are inactive
+        # Convert to naive UTC datetime for PostgreSQL comparison
+        current_time = datetime.now(timezone.utc).replace(tzinfo=None)
         result = await db.execute(
             delete(UserSession).where(
-                (UserSession.expires_at < datetime.now(timezone.utc)) |
+                (UserSession.expires_at < current_time) |
                 (UserSession.is_active == False)
             )
         )

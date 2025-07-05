@@ -5,7 +5,7 @@ from typing import Optional, List, Dict, Any
 # User Schemas
 class UserUpdate(BaseModel):
     handle: Optional[str] = Field(None, min_length=3, max_length=30)
-    email: Optional[str] = Field(None, regex=r'^[\w\.-]+@[\w\.-]+\.\w+$')
+    email: Optional[str] = Field(None, pattern=r'^[\w\.-]+@[\w\.-]+\.\w+$')
     rating: Optional[int] = Field(None, ge=0, le=5000)
     is_active: Optional[bool] = None
     is_admin: Optional[bool] = None
@@ -23,7 +23,7 @@ class UserResponse(BaseModel):
     total_submissions: Optional[int] = 0
     
     class Config:
-        orm_mode = True
+        from_attributes = True
         
     @classmethod
     def from_orm(cls, obj):
@@ -79,7 +79,7 @@ class PuzzleResponse(BaseModel):
     success_rate: Optional[float] = None
     
     class Config:
-        orm_mode = True
+        from_attributes = True
         
     @classmethod
     def from_orm(cls, obj):
@@ -119,7 +119,7 @@ class RoundResponse(BaseModel):
     ended: Optional[datetime] = None
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class GameResponse(BaseModel):
     id: int
@@ -137,7 +137,7 @@ class GameResponse(BaseModel):
     game_rounds: Optional[List[RoundResponse]] = []
     
     class Config:
-        orm_mode = True
+        from_attributes = True
         
     @classmethod
     def from_orm(cls, obj):
@@ -188,7 +188,7 @@ class SubmissionResponse(BaseModel):
     created: datetime
     
     class Config:
-        orm_mode = True
+        from_attributes = True
         
     @classmethod
     def from_orm(cls, obj):

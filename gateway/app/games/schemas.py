@@ -21,7 +21,7 @@ class RoundResponse(BaseModel):
     ended: Optional[datetime.datetime] = None
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class GameResponse(BaseModel):
     id: int
@@ -37,13 +37,13 @@ class GameResponse(BaseModel):
     player_b_rating_change: Optional[int] = None
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class GameDetail(GameResponse):
     game_rounds: List[RoundResponse]
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class GameListResponse(BaseModel):
     games: List[GameResponse]

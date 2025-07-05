@@ -28,13 +28,17 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
+from datetime import datetime
+
 class UserResponse(UserBase):
     id: int
     rating: int
-    created: str
+    created: datetime
+    is_admin: Optional[bool] = False
+    is_instructor: Optional[bool] = False
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class CompleteProfileRequest(BaseModel):
     token: str

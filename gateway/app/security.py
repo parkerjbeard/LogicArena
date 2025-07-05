@@ -1,6 +1,7 @@
 """
 Security configuration and middleware for LogicArena API Gateway
 """
+import os
 from typing import List, Optional
 from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,9 +30,11 @@ def get_allowed_origins() -> List[str]:
         # In production, only allow specific origins
         allowed = [settings.FRONTEND_URL]
         
-        # Add any additional production domains
-        if hasattr(settings, 'ADDITIONAL_ORIGINS'):
-            allowed.extend(settings.ADDITIONAL_ORIGINS.split(','))
+        # Add any additional production domains from CORS_ORIGINS env var
+        cors_origins = os.getenv('CORS_ORIGINS', '')
+        if cors_origins:
+            additional = [origin.strip() for origin in cors_origins.split(',') if origin.strip()]
+            allowed.extend(additional)
             
         return allowed
 
@@ -126,6 +129,12 @@ def configure_security_middleware(app):
         app.add_middleware(
             TrustedHostMiddleware,
             allowed_hosts=allowed_hosts
+        )
+    else:
+        # In debug mode, allow common localhost variations
+        app.add_middleware(
+            TrustedHostMiddleware,
+            allowed_hosts=["localhost", "127.0.0.1", "localhost:8000", "127.0.0.1:8000", "*"]
         )
     
     # Add security headers
