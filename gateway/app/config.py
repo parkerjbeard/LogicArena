@@ -8,21 +8,6 @@ class Settings(BaseSettings):
     API_PREFIX: str = "/api"
     DEBUG: bool = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
     
-    # Security
-    JWT_SECRET: str = os.getenv("JWT_SECRET", "")
-    JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
-    JWT_EXPIRATION_MINUTES: int = int(os.getenv("JWT_EXPIRATION_MINUTES", "60"))
-    JWT_REFRESH_EXPIRATION_DAYS: int = int(os.getenv("JWT_REFRESH_EXPIRATION_DAYS", "7"))
-    CSRF_SECRET: str = os.getenv("CSRF_SECRET", "")
-    
-    # Google OAuth
-    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
-    GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "") # Used for session/state signing
-    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
-    API_URL: str = os.getenv("API_URL", "http://localhost:8000")  # Base URL for API callbacks
-    OAUTH_STATE_EXPIRY: int = int(os.getenv("OAUTH_STATE_EXPIRY", "600"))  # 10 minutes
-    
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
     DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "20"))
@@ -51,9 +36,13 @@ class Settings(BaseSettings):
     ELO_K_FACTOR: int = int(os.getenv("ELO_K_FACTOR", "40"))
     ELO_INITIAL: int = int(os.getenv("ELO_INITIAL", "1000"))
     
+    # Frontend
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    API_URL: str = os.getenv("API_URL", "http://localhost:8000")
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
 
-settings = Settings() 
+settings = Settings()

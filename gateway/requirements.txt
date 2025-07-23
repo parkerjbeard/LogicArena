@@ -1,13 +1,8 @@
-authlib
 itsdangerous
 fastapi
 uvicorn
-pydantic
+pydantic[email]
 pydantic-settings
-PyJWT
-passlib
-python-multipart
-bcrypt
 psycopg2-binary
 sqlalchemy
 redis
@@ -16,4 +11,3 @@ httpx
 python-dotenv
 asyncpg
 fastapi-limiter
-email-validator

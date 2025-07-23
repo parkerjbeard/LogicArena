@@ -48,7 +48,7 @@ class ProofRequest(BaseModel):
             raise ValueError("Input too long (max 10000 characters)")
             
         # Basic sanity check for logical formulas
-        dangerous_patterns = ['../', '~/', '$', '`', '|', ';', '&', '>', '<']
+        dangerous_patterns = ['../', '~/', '$', '`', ';']
         for pattern in dangerous_patterns:
             if pattern in v:
                 raise ValueError(f"Invalid character sequence: {pattern}")
@@ -164,6 +164,7 @@ class CarnapFitchProofChecker:
         self.accessible_lines = set()
         self.show_lines = {}
         self.line_to_step = {}  # Maps line numbers to step indices
+        self.expected_premises = set()  # Expected premises for validation
         self.quantifier_handler = QuantifierHandler()  # Add quantifier logic handler
         
     def normalize_formula(self, formula: str) -> str:
@@ -219,24 +220,8 @@ class CarnapFitchProofChecker:
         line_num = 0
         indent_stack = [0]  # Stack of indentation levels
         
-        # Add premises as initial lines
-        for i, premise in enumerate(premises, 1):
-            self.line_formulas[i] = premise
-            self.accessible_lines.add(i)
-            self.line_to_step[i] = len(parsed_steps)
-            parsed_steps.append({
-                'line_number': i,
-                'formula': premise,
-                'justification': 'PR',
-                'rule': 'PR',
-                'cited_lines': [],
-                'subproof_level': 0,
-                'indent_level': 0,
-                'is_premise': True,
-                'is_show': False,
-                'is_qed': False
-            })
-            line_num = i
+        # Store expected premises for validation (but don't auto-add them)
+        self.expected_premises = set(premises)
         
         # Track whether we're expecting an indented block after a show
         expecting_indent_after_show = False
@@ -279,7 +264,9 @@ class CarnapFitchProofChecker:
                         subproof = self.subproof_stack.pop()
                         # Mark lines from closed subproof as no longer accessible
                         for j in range(subproof['start'], line_num):
-                            if j not in [p['line_number'] for p in parsed_steps if p.get('is_premise')]:
+                            # Keep PR lines accessible (they're not auto-added anymore)
+                            step_at_j = next((s for s in parsed_steps if s['line_number'] == j), None)
+                            if step_at_j and step_at_j.get('rule') != 'PR':
                                 self.accessible_lines.discard(j)
             elif current_indent > indent_stack[-1] and not expecting_indent_after_show:
                 # Unexpected increase in indentation
@@ -392,7 +379,10 @@ class CarnapFitchProofChecker:
         line_num = step['line_number']
         
         # Special cases
-        if rule in ['PR', 'AS', 'show'] or step.get('is_show'):
+        if rule == 'PR':
+            # Validate that premise is one of the expected premises
+            return self._validate_premise(step)
+        elif rule in ['AS', 'show'] or step.get('is_show'):
             return True
         
         if step.get('is_qed'):
@@ -412,6 +402,23 @@ class CarnapFitchProofChecker:
         else:
             self.errors.append(f"Line {line_num}: Unknown rule '{rule}'")
             return False
+    
+    def _validate_premise(self, step: Dict[str, Any]) -> bool:
+        """Validate that a PR line matches an expected premise"""
+        formula = step['formula']
+        line_num = step['line_number']
+        
+        # Normalize the formula for comparison
+        normalized_formula = self.normalize_formula(formula)
+        
+        # Check if this matches any expected premise
+        for expected_premise in self.expected_premises:
+            if self.normalize_formula(expected_premise) == normalized_formula:
+                return True
+        
+        # If we get here, the premise doesn't match any expected premise
+        self.errors.append(f"Line {line_num}: Premise '{formula}' is not among the expected premises")
+        return False
     
     def _validate_qed(self, qed_step: Dict[str, Any]) -> bool:
         """Validate QED line that closes a show statement"""
@@ -757,8 +764,8 @@ class CarnapFitchProofChecker:
     
     def calculate_proof_optimality(self, parsed_steps: List[Dict[str, Any]], best_known: int = None) -> Dict[str, Any]:
         """Calculate proof optimality metrics"""
-        # Count non-premise, non-show steps
-        proof_steps = [s for s in parsed_steps if not s.get('is_premise') and not s.get('is_show') and not s.get('is_qed')]
+        # Count non-show steps (premises are now manual and should be counted)
+        proof_steps = [s for s in parsed_steps if not s.get('is_show') and not s.get('is_qed')]
         actual_length = len(proof_steps)
         
         # Identify potentially redundant steps
@@ -773,10 +780,9 @@ class CarnapFitchProofChecker:
         # Forward pass to identify unused lines
         for step in parsed_steps:
             line_num = step['line_number']
-            if (not step.get('is_premise') and 
-                not step.get('is_show') and 
+            if (not step.get('is_show') and 
                 line_num not in used_lines and
-                step.get('rule') not in ['AS', 'show']):  # Assumptions and shows are always "used"
+                step.get('rule') not in ['AS', 'show', 'PR']):  # Assumptions, shows, and premises are always "used"
                 redundant_steps.append(line_num)
         
         optimality_score = 100
@@ -835,9 +841,9 @@ class CarnapFitchProofChecker:
             # Parse the proof
             parsed_steps = self.parse_proof(proof_text, premises)
             
-            # Validate each non-premise step
+            # Validate each step (including manual premises)
             for step in parsed_steps:
-                if not step.get('is_premise') and not step.get('is_show'):
+                if not step.get('is_show'):
                     self.validate_inference(step)
             
             # Check if conclusion is reached
@@ -865,8 +871,8 @@ class CarnapFitchProofChecker:
                 if not proof_valid:
                     self.errors.append(f"Proof does not establish the required conclusion: {phi}")
             
-            # Count lines and depth
-            proof_lines = len([s for s in parsed_steps if not s.get('is_premise')])
+            # Count lines and depth (include all lines now since premises are manual)
+            proof_lines = len([s for s in parsed_steps if not s.get('is_show')])
             max_depth = max([s['subproof_level'] for s in parsed_steps] + [0])
             
             # Calculate optimality (assume best_known from puzzle data if available)

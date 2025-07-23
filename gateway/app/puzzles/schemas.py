@@ -41,3 +41,20 @@ class PuzzleListResponse(BaseModel):
     total: int
     page: int
     size: int 
+
+class HintRequest(BaseModel):
+    puzzle_id: int
+    current_proof: str
+
+class HintResponse(BaseModel):
+    type: str
+    content: str
+    priority: int
+    target_line: Optional[int] = None
+    suggested_rule: Optional[str] = None
+    confidence: float
+
+class HintListResponse(BaseModel):
+    hints: List[HintResponse]
+    puzzle_id: int
+    timestamp: datetime.datetime

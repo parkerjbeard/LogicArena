@@ -15,11 +15,15 @@ from app.puzzles.schemas import (
     PuzzleDetail,
     ProofSubmission,
     ProofResponse,
-    PuzzleListResponse
+    PuzzleListResponse,
+    HintRequest,
+    HintResponse,
+    HintListResponse
 )
-from app.auth.utils import get_current_active_user
 from app.config import settings
 from app.middleware.rate_limiter import RateLimiters
+from app.hint_analyzer import generate_contextual_hints
+import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -103,8 +107,7 @@ async def get_random_puzzle(
 async def get_puzzle(
     puzzle_id: int,
     show_solution: bool = False,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    db: AsyncSession = Depends(get_db)
 ):
     """Get a puzzle by ID"""
     result = await db.execute(select(Puzzle).filter(Puzzle.id == puzzle_id))
@@ -116,9 +119,8 @@ async def get_puzzle(
             detail="Puzzle not found"
         )
     
-    # Only show machine_proof if requested and user is authenticated
-    if not show_solution:
-        puzzle.machine_proof = None
+    # Never show machine_proof without auth
+    puzzle.machine_proof = None
     
     return puzzle
 
@@ -127,8 +129,7 @@ async def get_puzzle(
 async def submit_proof(
     submission: ProofSubmission,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    db: AsyncSession = Depends(get_db)
 ):
     """Submit a proof for verification"""
     # Check if puzzle exists
@@ -175,9 +176,9 @@ async def submit_proof(
         
     processing_time = int((time.time() - start_time) * 1000)  # Convert to milliseconds
     
-    # Store the submission
+    # Store the submission (with anonymous user_id = 1)
     new_submission = Submission(
-        user_id=current_user.id,
+        user_id=1,  # Default anonymous user
         puzzle_id=puzzle.id,
         payload=submission.payload,
         verdict=verdict,
@@ -187,14 +188,6 @@ async def submit_proof(
     
     db.add(new_submission)
     await db.commit()
-    
-    # If the proof is valid, update user stats (in background)
-    if verdict:
-        background_tasks.add_task(
-            update_user_stats_after_valid_submission,
-            user_id=current_user.id,
-            puzzle_id=puzzle.id
-        )
     
     return ProofResponse(
         verdict=verdict,
@@ -207,4 +200,67 @@ async def submit_proof(
 async def update_user_stats_after_valid_submission(user_id: int, puzzle_id: int):
     """Update user statistics after a valid submission (run in background)"""
     # This would be implemented to update Elo ratings, etc.
-    pass 
+    pass
+
+@router.post("/hints", response_model=HintListResponse,
+             dependencies=[Depends(RateLimiters.puzzle_submit)])
+async def get_contextual_hints(
+    hint_request: HintRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get contextual hints for a proof in progress"""
+    # Get the puzzle
+    result = await db.execute(select(Puzzle).filter(Puzzle.id == hint_request.puzzle_id))
+    puzzle = result.scalars().first()
+    
+    if not puzzle:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Puzzle not found"
+        )
+    
+    try:
+        # Generate contextual hints using the analyzer
+        hint_data = generate_contextual_hints(
+            gamma=puzzle.gamma,
+            phi=puzzle.phi,
+            current_proof=hint_request.current_proof,
+            difficulty=puzzle.difficulty
+        )
+        
+        # Convert to response format
+        hints = [
+            HintResponse(
+                type=hint['type'],
+                content=hint['content'],
+                priority=hint['priority'],
+                target_line=hint['target_line'],
+                suggested_rule=hint['suggested_rule'],
+                confidence=hint['confidence']
+            )
+            for hint in hint_data
+        ]
+        
+        return HintListResponse(
+            hints=hints,
+            puzzle_id=puzzle.id,
+            timestamp=datetime.datetime.now()
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating hints: {str(e)}")
+        # Return a fallback hint if the analyzer fails
+        fallback_hints = [
+            HintResponse(
+                type="strategic",
+                content="Review the problem statement and think about what inference rules might help you progress toward the conclusion.",
+                priority=5,
+                confidence=0.5
+            )
+        ]
+        
+        return HintListResponse(
+            hints=fallback_hints,
+            puzzle_id=puzzle.id,
+            timestamp=datetime.datetime.now()
+        )

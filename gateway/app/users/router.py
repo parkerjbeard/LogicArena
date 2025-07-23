@@ -8,7 +8,7 @@ import json
 from datetime import datetime
 
 from app.db.session import get_db
-from app.models import User, Game, Submission, LoginActivity
+from app.models import User, Game, Submission
 from app.users.schemas import (
     UserProfileResponse, 
     UserStatsResponse, 
@@ -16,7 +16,6 @@ from app.users.schemas import (
     LeaderboardEntry,
     LeaderboardResponse
 )
-from app.auth.utils import get_current_active_user
 
 router = APIRouter()
 
@@ -53,57 +52,61 @@ async def get_user_stats(
             detail="User not found"
         )
     
-    # Get games data
-    total_games_a = await db.execute(select(func.count()).where(Game.player_a == user_id))
-    total_games_b = await db.execute(select(func.count()).where(Game.player_b == user_id))
-    total_games = total_games_a.scalar() + total_games_b.scalar()
-    
-    wins = await db.execute(select(func.count()).where(Game.winner == user_id))
-    wins_count = wins.scalar()
-    
-    # Get submission data
-    total_submissions = await db.execute(
-        select(func.count()).where(Submission.user_id == user_id)
+    # Get total games played
+    total_games_result = await db.execute(
+        select(func.count(Game.id)).where(
+            (Game.player_a == user_id) | (Game.player_b == user_id),
+            Game.winner.isnot(None)
+        )
     )
-    valid_submissions = await db.execute(
-        select(func.count()).where(Submission.user_id == user_id, Submission.verdict == True)
-    )
+    total_games = total_games_result.scalar() or 0
     
-    # Calculate stats
-    losses = total_games - wins_count - 0  # No draws for now
-    win_rate = (wins_count / total_games) * 100 if total_games > 0 else 0
+    # Get games won
+    games_won_result = await db.execute(
+        select(func.count(Game.id)).where(Game.winner == user_id)
+    )
+    games_won = games_won_result.scalar() or 0
+    
+    # Get total puzzles solved
+    puzzles_solved_result = await db.execute(
+        select(func.count(Submission.id)).where(
+            Submission.user_id == user_id,
+            Submission.verdict == True
+        )
+    )
+    puzzles_solved = puzzles_solved_result.scalar() or 0
+    
+    # Get recent form (last 10 games)
+    recent_games_result = await db.execute(
+        select(Game).where(
+            (Game.player_a == user_id) | (Game.player_b == user_id),
+            Game.winner.isnot(None)
+        ).order_by(desc(Game.completed)).limit(10)
+    )
+    recent_games = recent_games_result.scalars().all()
+    recent_wins = sum(1 for game in recent_games if game.winner == user_id)
+    
+    # Get win rate
+    win_rate = (games_won / total_games * 100) if total_games > 0 else 0
     
     return UserStatsResponse(
-        total_games=total_games,
-        wins=wins_count,
-        losses=losses,
-        draws=0,  # No draws in the current implementation
-        win_rate=win_rate,
+        user_id=user_id,
         rating=user.rating,
-        best_rating=None,  # We don't track this yet
-        total_submissions=total_submissions.scalar(),
-        valid_submissions=valid_submissions.scalar()
+        total_games=total_games,
+        games_won=games_won,
+        puzzles_solved=puzzles_solved,
+        win_rate=round(win_rate, 1),
+        recent_form=f"{recent_wins}/{len(recent_games)}"
     )
 
 @router.get("/submissions/{user_id}", response_model=List[UserSubmissionResponse])
 async def get_user_submissions(
     user_id: int,
-    limit: int = Query(10, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get a user's recent submissions"""
-    # Check if user exists
-    result = await db.execute(select(User).filter(User.id == user_id))
-    user = result.scalars().first()
-    
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    
-    # Get submissions
+    """Get a user's submission history"""
     result = await db.execute(
         select(Submission)
         .filter(Submission.user_id == user_id)
@@ -111,198 +114,106 @@ async def get_user_submissions(
         .limit(limit)
         .offset(offset)
     )
-    
     submissions = result.scalars().all()
     
-    return submissions
+    return [
+        UserSubmissionResponse(
+            id=submission.id,
+            puzzle_id=submission.puzzle_id,
+            game_id=submission.game_id,
+            verdict=submission.verdict,
+            created=submission.created,
+            processing_time_ms=submission.payload.get("processing_time_ms", 0) if submission.payload else 0
+        )
+        for submission in submissions
+    ]
+
+@router.get("/recent-games/{user_id}")
+async def get_recent_games(
+    user_id: int,
+    limit: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get a user's recent games"""
+    result = await db.execute(
+        select(Game).where(
+            (Game.player_a == user_id) | (Game.player_b == user_id)
+        ).order_by(desc(Game.created)).limit(limit)
+    )
+    games = result.scalars().all()
+    
+    # Fetch opponent details
+    game_list = []
+    for game in games:
+        opponent_id = game.player_b if game.player_a == user_id else game.player_a
+        opponent_result = await db.execute(select(User).filter(User.id == opponent_id))
+        opponent = opponent_result.scalars().first()
+        
+        game_list.append({
+            "id": game.id,
+            "opponent": opponent.handle if opponent else "Unknown",
+            "opponent_rating": opponent.rating if opponent else 0,
+            "winner": game.winner,
+            "rating_delta": game.rating_delta,
+            "created": game.created,
+            "completed": game.completed,
+            "won": game.winner == user_id
+        })
+    
+    return game_list
 
 @router.get("/leaderboard", response_model=LeaderboardResponse)
 async def get_leaderboard(
-    page: int = Query(1, ge=1),
-    size: int = Query(10, ge=1, le=100),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get the top users by rating"""
-    # Calculate offset
-    offset = (page - 1) * size
+    """Get the global leaderboard"""
+    # Get total count of active users
+    count_result = await db.execute(
+        select(func.count(User.id)).where(User.is_active == True)
+    )
+    total_users = count_result.scalar() or 0
     
-    # Get total users
-    total_result = await db.execute(select(func.count()).select_from(User))
-    total = total_result.scalar()
-    
-    # Get top users by rating
+    # Get leaderboard entries
     result = await db.execute(
-        select(
-            User.id,
-            User.handle,
-            User.rating,
-            func.count(Game.id).filter(Game.winner == User.id).label("games_won"),
-            func.count(
-                func.distinct(
-                    func.coalesce(Game.id, 0)
-                )
-            ).label("games_played")
-        )
-        .outerjoin(Game, (Game.player_a == User.id) | (Game.player_b == User.id))
-        .group_by(User.id)
+        select(User)
+        .where(User.is_active == True)
         .order_by(desc(User.rating))
-        .limit(size)
+        .limit(limit)
         .offset(offset)
     )
+    users = result.scalars().all()
     
-    rankings = []
-    for row in result.all():
-        rankings.append(
-            LeaderboardEntry(
-                id=row.id,
-                handle=row.handle,
-                rating=row.rating,
-                games_won=row.games_won,
-                games_played=row.games_played
+    entries = []
+    for idx, user in enumerate(users):
+        # Get games played
+        games_result = await db.execute(
+            select(func.count(Game.id)).where(
+                (Game.player_a == user.id) | (Game.player_b == user.id),
+                Game.winner.isnot(None)
             )
         )
+        games_played = games_result.scalar() or 0
+        
+        # Get games won
+        wins_result = await db.execute(
+            select(func.count(Game.id)).where(Game.winner == user.id)
+        )
+        games_won = wins_result.scalar() or 0
+        
+        entries.append(LeaderboardEntry(
+            rank=offset + idx + 1,
+            user_id=user.id,
+            handle=user.handle,
+            rating=user.rating,
+            games_played=games_played,
+            games_won=games_won
+        ))
     
     return LeaderboardResponse(
-        rankings=rankings,
-        total=total,
-        page=page,
-        size=size
+        total_users=total_users,
+        entries=entries,
+        offset=offset,
+        limit=limit
     )
-
-@router.delete("/me")
-async def delete_own_account(
-    current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """Delete the current user's account and all associated data"""
-    try:
-        # Delete all submissions
-        await db.execute(delete(Submission).where(Submission.user_id == current_user.id))
-        
-        # Delete all games where user participated
-        # Note: In production, you might want to anonymize rather than delete games
-        await db.execute(
-            delete(Game).where(
-                (Game.player_a == current_user.id) | (Game.player_b == current_user.id)
-            )
-        )
-        
-        # Delete the user
-        await db.execute(delete(User).where(User.id == current_user.id))
-        
-        await db.commit()
-        
-        return {"detail": "Account deleted successfully"}
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete account"
-        )
-
-@router.get("/me/export")
-async def export_user_data(
-    current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """Export all user data in JSON format (GDPR compliance)"""
-    # Get user profile data
-    user_data = {
-        "id": current_user.id,
-        "handle": current_user.handle,
-        "email": current_user.email,
-        "rating": current_user.rating,
-        "is_admin": current_user.is_admin,
-        "is_active": current_user.is_active,
-        "created_at": current_user.created_at.isoformat() if current_user.created_at else None,
-        "google_id": current_user.google_id,
-    }
-    
-    # Get all games
-    games_result = await db.execute(
-        select(Game).where(
-            (Game.player_a == current_user.id) | (Game.player_b == current_user.id)
-        ).order_by(desc(Game.created))
-    )
-    games = games_result.scalars().all()
-    
-    games_data = []
-    for game in games:
-        games_data.append({
-            "id": game.id,
-            "player_a": game.player_a,
-            "player_b": game.player_b,
-            "winner": game.winner,
-            "rating_delta": game.rating_delta,
-            "created": game.created.isoformat() if game.created else None,
-            "completed": game.completed.isoformat() if game.completed else None,
-        })
-    
-    # Get all submissions
-    submissions_result = await db.execute(
-        select(Submission).where(
-            Submission.user_id == current_user.id
-        ).order_by(desc(Submission.created))
-    )
-    submissions = submissions_result.scalars().all()
-    
-    submissions_data = []
-    for submission in submissions:
-        submissions_data.append({
-            "id": submission.id,
-            "game_id": submission.game_id,
-            "puzzle_id": submission.puzzle_id,
-            "user_id": submission.user_id,
-            "payload": submission.payload,
-            "verdict": submission.verdict,
-            "created": submission.created.isoformat() if submission.created else None,
-        })
-    
-    # Compile all data
-    export_data = {
-        "export_date": datetime.utcnow().isoformat(),
-        "platform": "LogicArena",
-        "user": user_data,
-        "games": games_data,
-        "submissions": submissions_data,
-        "total_games": len(games_data),
-        "total_submissions": len(submissions_data),
-    }
-    
-    # Return as JSON download
-    return JSONResponse(
-        content=export_data,
-        headers={
-            "Content-Disposition": f"attachment; filename=logicarena_userdata_{current_user.handle}_{datetime.utcnow().strftime('%Y%m%d')}.json"
-        }
-    )
-
-@router.get("/me/login-activity")
-async def get_login_activity(
-    current_user: User = Depends(get_current_active_user),
-    limit: int = Query(20, ge=1, le=100),
-    db: AsyncSession = Depends(get_db)
-):
-    """Get user's recent login activity"""
-    result = await db.execute(
-        select(LoginActivity)
-        .filter(LoginActivity.user_id == current_user.id)
-        .order_by(desc(LoginActivity.created))
-        .limit(limit)
-    )
-    activities = result.scalars().all()
-    
-    return {
-        "activities": [
-            {
-                "id": activity.id,
-                "login_type": activity.login_type,
-                "ip_address": activity.ip_address,
-                "user_agent": activity.user_agent,
-                "success": activity.success,
-                "error_message": activity.error_message,
-                "created": activity.created.isoformat() if activity.created else None
-            }
-            for activity in activities
-        ]
-    } 

@@ -26,8 +26,8 @@ def create_puzzle_in_db(conn, puzzle):
             
             cur.execute(
                 """
-                INSERT INTO puzzle (gamma, phi, difficulty, best_len, machine_proof)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO puzzle (gamma, phi, difficulty, best_len, machine_proof, created)
+                VALUES (%s, %s, %s, %s, %s, NOW())
                 RETURNING id
                 """,
                 (gamma, puzzle.conclusion, puzzle.difficulty, puzzle.optimal_length, puzzle.machine_proof)

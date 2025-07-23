@@ -12,13 +12,9 @@ import redis.asyncio as redis
 from fastapi_limiter import FastAPILimiter
 import asyncio
 
-from app.auth.router import router as auth_router
-from app.auth.simple_router import router as oauth_router
 from app.users.router import router as users_router
 from app.puzzles.router import router as puzzles_router
 from app.games.router import router as games_router
-from app.admin.router import router as admin_router
-from app.instructor.router import router as instructor_router
 from app.config import settings
 from app.db.session import engine, get_db, pool_monitor, close_db_connections, verify_db_connection
 from app.db.health import db_health_checker
@@ -27,16 +23,12 @@ from app.models import Base
 from app.websocket.manager import ConnectionManager
 from app.middleware.logging_middleware import LoggingMiddleware
 
-# Configure logging
-import sys
-sys.path.append('/app')  # Add shared directory to path
-from shared.logging_config import setup_logging
-
-# Setup centralized logging with Logstash and Sentry
-logger = setup_logging(
-    service_name="gateway",
-    log_level=os.getenv("LOG_LEVEL", "INFO")
+# Configure logging - simplified for demo
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+logger = logging.getLogger("gateway")
 
 # Create FastAPI app
 app = FastAPI(
@@ -44,10 +36,6 @@ app = FastAPI(
     description="API Gateway for the LogicArena platform",
     version="0.1.0",
 )
-
-# Add session middleware for OAuth (required by Authlib)
-from starlette.middleware.sessions import SessionMiddleware
-app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
 
 # Configure security middleware (includes CORS)
 from app.security import configure_security_middleware
@@ -108,9 +96,6 @@ async def process_game_events():
         logger.error(f"Game event processor error: {e}")
 
 # Include routers
-app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
-# Include simplified OAuth routes
-app.include_router(oauth_router, prefix="/api/auth", tags=["OAuth"])
 app.include_router(
     users_router, 
     prefix="/api/users", 
@@ -125,16 +110,6 @@ app.include_router(
     games_router, 
     prefix="/api/games", 
     tags=["Games"]
-)
-app.include_router(
-    admin_router, 
-    prefix="/api/admin", 
-    tags=["Admin"]
-)
-app.include_router(
-    instructor_router,
-    prefix="/api/instructor",
-    tags=["Instructor"]
 )
 
 @app.on_event("startup")
@@ -173,11 +148,6 @@ async def startup():
     # Initialize WebSocket manager with Redis
     await connection_manager.initialize(settings.REDIS_URL)
     
-    # Schedule token cleanup task to run every hour
-    from app.auth.cleanup import schedule_cleanup
-    cleanup_task = schedule_cleanup(interval_minutes=60)
-    app.state.cleanup_task = cleanup_task  # Store reference to cancel on shutdown
-    
     # Start game event processor
     global game_event_processor_task
     game_event_processor_task = asyncio.create_task(process_game_events())
@@ -186,10 +156,6 @@ async def startup():
 
 @app.on_event("shutdown")
 async def shutdown():
-    # Cancel cleanup task
-    if hasattr(app.state, "cleanup_task") and app.state.cleanup_task:
-        app.state.cleanup_task.cancel()
-    
     # Cancel game event processor
     global game_event_processor_task
     if game_event_processor_task:
@@ -242,30 +208,17 @@ async def health_db_metrics():
     metrics = await db_health_checker.get_connection_metrics()
     return metrics
 
-# WebSocket endpoint for duel matches
+# WebSocket endpoint for duel matches - NO AUTHENTICATION
 @app.websocket("/ws/duel/{game_id}")
 async def websocket_duel_endpoint(
     websocket: WebSocket, 
     game_id: str,
-    token: str = None,  # Token passed as query param
     db=Depends(get_db)
 ):
-    # Validate token before accepting connection
-    if not token:
-        await websocket.close(code=1008, reason="Missing authentication")
-        return
+    # Accept all connections without authentication
+    user_id = "anonymous"  # Default user ID for all connections
     
-    try:
-        from app.auth.utils import verify_token
-        user_id = await verify_token(token, db)
-        if not user_id:
-            await websocket.close(code=1008, reason="Invalid authentication")
-            return
-    except Exception:
-        await websocket.close(code=1008, reason="Authentication failed")
-        return
-    
-    # Connect with enhanced manager (includes user_id)
+    # Connect with enhanced manager
     await connection_manager.connect(websocket, game_id, user_id)
     try:
         while True:
@@ -276,7 +229,7 @@ async def websocket_duel_endpoint(
             if not message:
                 continue  # Invalid message or ping/pong handled
             
-            # Add authentication info
+            # Add user info
             message.user_id = user_id
             message.game_id = int(game_id)
             
@@ -316,29 +269,14 @@ async def websocket_duel_endpoint(
     except WebSocketDisconnect:
         await connection_manager.disconnect(websocket, game_id)
 
-# WebSocket endpoint for general notifications
+# WebSocket endpoint for general notifications - NO AUTHENTICATION
 @app.websocket("/ws/notifications/{user_id}")
 async def websocket_notifications_endpoint(
     websocket: WebSocket, 
     user_id: str,
-    token: str = None,  # Token passed as query param
     db=Depends(get_db)
 ):
-    # Validate token and ensure user_id matches
-    if not token:
-        await websocket.close(code=1008, reason="Missing authentication")
-        return
-    
-    try:
-        from app.auth.utils import verify_token
-        token_user_id = await verify_token(token, db)
-        if not token_user_id or str(token_user_id) != user_id:
-            await websocket.close(code=1008, reason="Invalid authentication")
-            return
-    except Exception:
-        await websocket.close(code=1008, reason="Authentication failed")
-        return
-    
+    # Accept all connections without authentication
     await connection_manager.connect_user(websocket, user_id)
     try:
         while True:
@@ -409,4 +347,4 @@ if __name__ == "__main__":
         host="0.0.0.0", 
         port=int(os.getenv("GATEWAY_PORT", 8000)),
         reload=True
-    ) 
+    )
