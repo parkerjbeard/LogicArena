@@ -249,3 +249,235 @@ When creating new components, ensure they:
 - Rule colors following the established palette
 
 This style guide should be referenced and updated as new patterns emerge in the development process.
+
+## Responsive Design System
+
+LogicArena now includes a comprehensive responsive design system that automatically adapts to different devices and input methods.
+
+### Core Responsive Components
+
+#### 1. Input Detection Context
+```tsx
+import { useInput } from '@/contexts/InputContext';
+
+const Component = () => {
+  const { inputMethod, deviceType, isTouchDevice, isHoverSupported } = useInput();
+  // inputMethod: 'touch' | 'mouse' | 'hybrid'
+  // deviceType: 'mobile' | 'tablet' | 'desktop'
+};
+```
+
+#### 2. Responsive Hooks
+```tsx
+import { useBreakpoint, useAdaptiveClick, useSwipeGesture } from '@/hooks/useResponsive';
+
+// Breakpoint detection
+const { breakpoint, isMobile, isTablet, isDesktop } = useBreakpoint();
+
+// Adaptive click/touch handling
+const clickHandlers = useAdaptiveClick(
+  onClick,    // Regular click/tap
+  onLongPress // Long press handler (mobile)
+);
+
+// Swipe gestures
+useSwipeGesture(ref, {
+  onSwipeLeft: () => {},
+  onSwipeRight: () => {},
+  onSwipeUp: () => {},
+  onSwipeDown: () => {},
+});
+```
+
+#### 3. Responsive Navigation
+```tsx
+import ResponsiveNavigation from '@/components/ResponsiveNavigation';
+
+// Features:
+// - Desktop: Traditional top navigation bar
+// - Tablet/Mobile: Bottom tab bar + hamburger menu
+// - Swipe-to-close drawer on mobile
+// - Touch-optimized menu items
+```
+
+#### 4. Responsive UI Components
+
+**Buttons:**
+```tsx
+import { ResponsiveButton } from '@/components/ui';
+
+<ResponsiveButton
+  variant="primary" // primary | secondary | ghost | danger
+  size="md"        // sm | md | lg | auto
+  onLongPress={() => {}} // Mobile long press
+  fullWidth={isMobile}
+>
+  Click Me
+</ResponsiveButton>
+```
+
+**Forms:**
+```tsx
+import { ResponsiveInput, ResponsiveTextarea, ResponsiveSelect } from '@/components/ui';
+
+<ResponsiveInput
+  label="Email"
+  type="email"
+  error={errors.email}
+  hint="We'll never share your email"
+  icon={<MailIcon />}
+/>
+```
+
+**Modals:**
+```tsx
+import { ResponsiveModal, ResponsiveSheet } from '@/components/ui';
+
+<ResponsiveModal
+  isOpen={isOpen}
+  onClose={onClose}
+  title="Modal Title"
+  size="md" // sm | md | lg | xl | full
+>
+  {/* Modal content */}
+</ResponsiveModal>
+```
+
+**Cards:**
+```tsx
+import { ResponsiveCard, CardHeader, CardContent } from '@/components/ui';
+
+<ResponsiveCard variant="interactive" padding="md">
+  <CardHeader title="Card Title" subtitle="Optional subtitle" />
+  <CardContent>
+    {/* Content */}
+  </CardContent>
+</ResponsiveCard>
+```
+
+**Layout:**
+```tsx
+import { ResponsiveGrid, ResponsiveStack, ResponsiveContainer } from '@/components/ui';
+
+// Adaptive grid
+<ResponsiveGrid cols={{ xs: 1, sm: 2, lg: 3 }} gap="md">
+  {items.map(item => <Card key={item.id} />)}
+</ResponsiveGrid>
+
+// Responsive stack
+<ResponsiveStack direction="responsive" spacing="md">
+  {/* Vertical on mobile, horizontal on desktop */}
+</ResponsiveStack>
+```
+
+### Responsive Proof Editors
+
+**Interactive Proof Editor:**
+```tsx
+import { ResponsiveProofEditor } from '@/components/Tutorial/ResponsiveProofEditor';
+
+// Features:
+// - Touch-friendly line selection
+// - Swipe gestures for actions (delete/duplicate)
+// - Long press for context menu
+// - Adaptive sizing based on device
+```
+
+**Carnap Editor:**
+```tsx
+import ResponsiveCarnapEditor from '@/components/ResponsiveCarnapEditor';
+
+// Features:
+// - Monaco editor on desktop
+// - Touch-friendly line editor on mobile
+// - Symbol palette for easy input
+// - Responsive syntax guide
+```
+
+### Tailwind Responsive Utilities
+
+The Tailwind config has been extended with:
+
+```js
+// Input method detection
+'touch': { 'raw': '(pointer: coarse)' }
+'mouse': { 'raw': '(pointer: fine)' }
+'can-hover': { 'raw': '(hover: hover)' }
+
+// Safe area spacing
+'safe-top': 'env(safe-area-inset-top)'
+'safe-bottom': 'env(safe-area-inset-bottom)'
+'safe-left': 'env(safe-area-inset-left)'
+'safe-right': 'env(safe-area-inset-right)'
+
+// Touch-friendly minimum height
+'min-h-touch-target': '44px'
+```
+
+### Mobile-First Best Practices
+
+1. **Touch Targets**: Minimum 44x44px for all interactive elements
+2. **Input Zoom Prevention**: Font size 16px on all inputs
+3. **Gesture Support**: Swipe, long press, and pinch gestures where appropriate
+4. **Adaptive Layouts**: Stack vertically on mobile, side-by-side on desktop
+5. **Performance**: Lazy load heavy components, reduce animations on mobile
+6. **Safe Areas**: Respect device safe areas (notches, home indicators)
+
+### Implementation Examples
+
+**Page Layout with Navigation:**
+```tsx
+// Pages should be in app/(main)/ directory to get responsive navigation
+export default function MyPage() {
+  return (
+    <ResponsiveContainer maxWidth="lg">
+      <ResponsiveStack spacing="lg">
+        <h1>Page Title</h1>
+        {/* Page content */}
+      </ResponsiveStack>
+    </ResponsiveContainer>
+  );
+}
+```
+
+**Responsive Form:**
+```tsx
+<FormFieldGroup>
+  <ResponsiveInput label="Name" {...register('name')} />
+  <ResponsiveSelect 
+    label="Difficulty" 
+    options={difficulties}
+    {...register('difficulty')}
+  />
+  <FormActions align="right">
+    <ResponsiveButton variant="ghost">Cancel</ResponsiveButton>
+    <ResponsiveButton variant="primary" type="submit">
+      Submit
+    </ResponsiveButton>
+  </FormActions>
+</FormFieldGroup>
+```
+
+**Touch-Optimized List:**
+```tsx
+{items.map(item => (
+  <ResponsiveCard 
+    key={item.id}
+    variant="interactive"
+    onClick={() => handleSelect(item)}
+    onLongPress={() => handleOptions(item)}
+  >
+    {/* Item content */}
+  </ResponsiveCard>
+))}
+```
+
+### Testing Responsive Features
+
+1. **Device Testing**: Test on real devices when possible
+2. **Browser DevTools**: Use responsive mode with touch simulation
+3. **Input Method**: Test both mouse and touch interactions
+4. **Orientation**: Test portrait and landscape on mobile
+5. **Performance**: Monitor on slower devices and connections
+
+The responsive design system ensures LogicArena provides an excellent experience whether users are on desktop with a mouse, tablet with touch, or mobile phone with limited screen space.

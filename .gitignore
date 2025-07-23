@@ -397,6 +397,8 @@ claude_docs/
 *.md
 !README.md
 !CLAUDE.md
+!docs/*.md
+!.github/*.md
 
 # Development artifacts
 .dev-pids
@@ -419,3 +421,38 @@ scripts/
 
 # Shared directory (if temporary)
 shared/
+
+# ====================
+# REDIS & DATABASES (RUNTIME)
+# ====================
+
+# Redis dump files
+dump.rdb
+*.rdb
+
+# ====================
+# DOCKER DEVELOPMENT
+# ====================
+
+# Local docker directory (development)
+docker/
+
+# ====================
+# DISABLED CODE
+# ====================
+
+# Temporarily disabled files
+*.disabled
+
+# ====================
+# TEMPORARY DEBUG/TEST FILES
+# ====================
+
+# Debug scripts
+debug_*.py
+test_*.py
+*_test*.py
+
+# Tutorial generators (development only)  
+tutorial_puzzle_generator.py
+seed_tutorial_puzzles.py

@@ -11,13 +11,13 @@ if ! docker-compose ps | grep -q "gateway.*Up"; then
 fi
 
 # Copy the seed scripts to the gateway container
-docker cp seed_puzzles.py logicarena_gateway_1:/tmp/
-docker cp puzzle/puzzle_generator.py logicarena_gateway_1:/tmp/
+docker cp seed_puzzles.py logicarena-gateway-1:/tmp/
+docker cp puzzle/puzzle_generator.py logicarena-gateway-1:/tmp/
 
 # Run the seed script inside the gateway container
 docker-compose exec gateway bash -c "
     cd /tmp
-    export DATABASE_URL='postgresql://logicuser:logicpass@postgres:5432/logicarena'
+    export DATABASE_URL='postgresql://logicuser:DevP%40ssw0rd2024%21@postgres:5432/logicarena'
     python seed_puzzles.py \$@
 "
 
