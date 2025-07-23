@@ -38,7 +38,7 @@ const CarnapFitchEditor = dynamic(
   () => import('./CarnapFitchEditor'),
   {
     loading: () => <EditorSkeleton />,
-    ssr: false // Monaco doesn't work with SSR
+    ssr: false // Client-side only component
   }
 );
 

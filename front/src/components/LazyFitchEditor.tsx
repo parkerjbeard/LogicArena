@@ -23,7 +23,7 @@ const FitchEditor = dynamic(
   () => import('./FitchEditor'),
   {
     loading: () => <EditorSkeleton />,
-    ssr: false // Monaco doesn't work with SSR
+    ssr: false // Client-side only component
   }
 );
 

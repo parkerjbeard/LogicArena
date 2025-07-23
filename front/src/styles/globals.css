@@ -64,11 +64,7 @@ body {
   padding-right: env(safe-area-inset-right);
 }
 
-/* Monaco editor customizations */
-.monaco-editor .bracket-match {
-  background-color: rgba(0, 120, 215, 0.2);
-  border: 1px solid rgba(0, 120, 215, 0.5);
-}
+/* Monaco editor styles removed */
 
 .proof-line-error {
   text-decoration: wavy underline red;

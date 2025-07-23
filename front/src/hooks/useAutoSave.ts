@@ -2,8 +2,6 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { debounce } from 'lodash';
-import { progressAPI } from '@/lib/api';
-import { useToast } from '@/components/Toast';
 
 interface UseAutoSaveOptions {
   enabled?: boolean;
@@ -24,7 +22,6 @@ export function useAutoSave(
     onError 
   } = options;
   
-  const { showToast } = useToast();
   const lastSavedContent = useRef<string>('');
   const isSaving = useRef(false);
 
@@ -37,19 +34,11 @@ export function useAutoSave(
 
       isSaving.current = true;
       try {
-        // Save to localStorage immediately
+        // Save to localStorage only
         localStorage.setItem(`puzzle_draft_${id}`, draft);
         localStorage.setItem(`puzzle_draft_${id}_timestamp`, new Date().toISOString());
-        
-        // Try to save to backend
-        try {
-          await progressAPI.saveDraft(id, draft);
-          lastSavedContent.current = draft;
-          onSave?.();
-        } catch (apiError) {
-          // Silently fail for backend, localStorage is our backup
-          console.warn('Failed to save draft to backend:', apiError);
-        }
+        lastSavedContent.current = draft;
+        onSave?.();
       } catch (error) {
         console.error('Failed to save draft:', error);
         onError?.(error);
@@ -69,7 +58,7 @@ export function useAutoSave(
   // Load draft from localStorage on mount
   const loadDraft = useCallback(async (id: number): Promise<string | null> => {
     try {
-      // First try localStorage
+      // Load from localStorage
       const localDraft = localStorage.getItem(`puzzle_draft_${id}`);
       if (localDraft) {
         const timestamp = localStorage.getItem(`puzzle_draft_${id}_timestamp`);
@@ -84,47 +73,55 @@ export function useAutoSave(
           }
         }
       }
-
-      // Try to load from backend
-      try {
-        const response = await progressAPI.getDraft(id);
-        if (response.draft) {
-          // Update localStorage with backend version
-          localStorage.setItem(`puzzle_draft_${id}`, response.draft);
-          localStorage.setItem(`puzzle_draft_${id}_timestamp`, new Date().toISOString());
-          return response.draft;
-        }
-      } catch (apiError) {
-        // Silently fail, no draft available
-      }
-
-      return null;
     } catch (error) {
       console.error('Failed to load draft:', error);
-      return null;
     }
+    return null;
   }, []);
 
-  // Clear draft after successful submission
+  // Clear draft
   const clearDraft = useCallback(async (id: number) => {
     try {
-      // Clear from localStorage
       localStorage.removeItem(`puzzle_draft_${id}`);
       localStorage.removeItem(`puzzle_draft_${id}_timestamp`);
       lastSavedContent.current = '';
-      
-      // Try to clear from backend
-      try {
-        await progressAPI.clearDraft(id);
-      } catch (apiError) {
-        // Silently fail
-      }
     } catch (error) {
       console.error('Failed to clear draft:', error);
     }
   }, []);
 
-  // Cleanup on unmount
+  // Clear drafts older than 7 days
+  const clearOldDrafts = useCallback(() => {
+    try {
+      const now = new Date();
+      const keys = Object.keys(localStorage);
+      
+      keys.forEach(key => {
+        if (key.includes('puzzle_draft_') && key.includes('_timestamp')) {
+          const timestamp = localStorage.getItem(key);
+          if (timestamp) {
+            const savedTime = new Date(timestamp);
+            const daysSince = (now.getTime() - savedTime.getTime()) / (1000 * 60 * 60 * 24);
+            
+            if (daysSince > 7) {
+              const draftKey = key.replace('_timestamp', '');
+              localStorage.removeItem(key);
+              localStorage.removeItem(draftKey);
+            }
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Failed to clear old drafts:', error);
+    }
+  }, []);
+
+  // Clear old drafts on mount
+  useEffect(() => {
+    clearOldDrafts();
+  }, [clearOldDrafts]);
+
+  // Cancel debounced save on unmount
   useEffect(() => {
     return () => {
       debouncedSave.cancel();
@@ -134,6 +131,6 @@ export function useAutoSave(
   return {
     loadDraft,
     clearDraft,
-    isSaving: isSaving.current,
+    isSaving: isSaving.current
   };
 }

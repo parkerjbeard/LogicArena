@@ -209,77 +209,155 @@ export default function TutorialsPage() {
         </motion.div>
       </div>
 
-      {/* Tutorial Grid */}
+      {/* Tutorial Sections */}
       <div className="w-full max-w-5xl px-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {tutorials.map((tutorial, index) => {
-            const status = getTutorialStatus(tutorial);
-            
-            return (
-              <motion.div
-                key={tutorial.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className={`
-                  group rounded-lg border border-transparent px-5 py-4 
-                  transition-colors hover:border-gray-300 hover:bg-gray-100 
-                  hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30
-                  ${status === 'locked' ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}
-                  ${tutorial.id === 'chapter-1' ? 'bg-gradient-to-br from-purple-50/50 to-blue-50/50 dark:from-purple-900/10 dark:to-blue-900/10' : ''}
-                `}
-                onClick={() => handleStartTutorial(tutorial)}
-              >
-                {/* Tutorial Content */}
-                <div className="flex items-start justify-between mb-3">
-                  <h2 className="text-2xl font-semibold">
-                    {tutorial.title}{' '}
-                    {status === 'completed' ? (
-                      <CheckCircle className="inline w-5 h-5 text-green-500 ml-2" />
-                    ) : status === 'locked' ? (
-                      <Lock className="inline w-5 h-5 text-gray-400 ml-2" />
-                    ) : (
-                      <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-                        →
-                      </span>
-                    )}
-                  </h2>
-                </div>
-                
-                <p className="m-0 max-w-[30ch] text-sm opacity-50 mb-4">
-                  {tutorial.description}
-                </p>
-
-                {/* Bottom info */}
-                <div className="flex items-center justify-between text-xs opacity-50">
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-3 h-3" />
-                    <span>{tutorial.estimatedTime} min</span>
+        {/* Lessons Section */}
+        <div className="mb-12">
+          <h2 className="text-2xl font-bold mb-6 text-center">Lessons</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {tutorials.filter(tutorial => !tutorial.title.includes('(Practice)')).map((tutorial, index) => {
+              const status = getTutorialStatus(tutorial);
+              
+              return (
+                <motion.div
+                  key={tutorial.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  className={`
+                    group rounded-lg border border-transparent px-5 py-4 
+                    transition-colors hover:border-gray-300 hover:bg-gray-100 
+                    hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30
+                    ${status === 'locked' ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}
+                    ${tutorial.id === 'chapter-1' ? 'bg-gradient-to-br from-purple-50/50 to-blue-50/50 dark:from-purple-900/10 dark:to-blue-900/10' : ''}
+                  `}
+                  onClick={() => handleStartTutorial(tutorial)}
+                >
+                  {/* Tutorial Content */}
+                  <div className="flex items-start justify-between mb-3">
+                    <h3 className="text-2xl font-semibold">
+                      {tutorial.title}{' '}
+                      {status === 'completed' ? (
+                        <CheckCircle className="inline w-5 h-5 text-green-500 ml-2" />
+                      ) : status === 'locked' ? (
+                        <Lock className="inline w-5 h-5 text-gray-400 ml-2" />
+                      ) : (
+                        <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
+                          →
+                        </span>
+                      )}
+                    </h3>
                   </div>
                   
-                  {tutorial.prerequisites && tutorial.prerequisites.length > 0 && (
-                    <div className="flex items-center gap-1">
-                      {tutorial.prerequisites.map(prereq => {
-                        const prereqTutorial = tutorials.find(t => t.id === prereq);
-                        return (
-                          <span key={prereq} className="font-medium">
-                            {prereqTutorial?.title}
-                          </span>
-                        );
-                      })}
+                  <p className="m-0 max-w-[30ch] text-sm opacity-50 mb-4">
+                    {tutorial.description}
+                  </p>
+
+                  {/* Bottom info */}
+                  <div className="flex items-center justify-between text-xs opacity-50">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-3 h-3" />
+                      <span>{tutorial.estimatedTime} min</span>
                     </div>
-                  )}
+                    
+                    {tutorial.prerequisites && tutorial.prerequisites.length > 0 && (
+                      <div className="flex items-center gap-1">
+                        {tutorial.prerequisites.map(prereq => {
+                          const prereqTutorial = tutorials.find(t => t.id === prereq);
+                          return (
+                            <span key={prereq} className="font-medium">
+                              {prereqTutorial?.title}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                    
+                    <span className={`
+                      px-2 py-0.5 rounded-full text-xs
+                      ${getDifficultyColor(tutorial.difficulty)}
+                    `}>
+                      {tutorial.difficulty}
+                    </span>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Practice Section */}
+        <div className="mb-12">
+          <h2 className="text-2xl font-bold mb-6 text-center">Practice</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {tutorials.filter(tutorial => tutorial.title.includes('(Practice)')).map((tutorial, index) => {
+              const status = getTutorialStatus(tutorial);
+              
+              return (
+                <motion.div
+                  key={tutorial.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  className={`
+                    group rounded-lg border border-transparent px-5 py-4 
+                    transition-colors hover:border-gray-300 hover:bg-gray-100 
+                    hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30
+                    ${status === 'locked' ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}
+                  `}
+                  onClick={() => handleStartTutorial(tutorial)}
+                >
+                  {/* Tutorial Content */}
+                  <div className="flex items-start justify-between mb-3">
+                    <h3 className="text-2xl font-semibold">
+                      {tutorial.title}{' '}
+                      {status === 'completed' ? (
+                        <CheckCircle className="inline w-5 h-5 text-green-500 ml-2" />
+                      ) : status === 'locked' ? (
+                        <Lock className="inline w-5 h-5 text-gray-400 ml-2" />
+                      ) : (
+                        <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
+                          →
+                        </span>
+                      )}
+                    </h3>
+                  </div>
                   
-                  <span className={`
-                    px-2 py-0.5 rounded-full text-xs
-                    ${getDifficultyColor(tutorial.difficulty)}
-                  `}>
-                    {tutorial.difficulty}
-                  </span>
-                </div>
-              </motion.div>
-            );
-          })}
+                  <p className="m-0 max-w-[30ch] text-sm opacity-50 mb-4">
+                    {tutorial.description}
+                  </p>
+
+                  {/* Bottom info */}
+                  <div className="flex items-center justify-between text-xs opacity-50">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-3 h-3" />
+                      <span>{tutorial.estimatedTime} min</span>
+                    </div>
+                    
+                    {tutorial.prerequisites && tutorial.prerequisites.length > 0 && (
+                      <div className="flex items-center gap-1">
+                        {tutorial.prerequisites.map(prereq => {
+                          const prereqTutorial = tutorials.find(t => t.id === prereq);
+                          return (
+                            <span key={prereq} className="font-medium">
+                              {prereqTutorial?.title}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                    
+                    <span className={`
+                      px-2 py-0.5 rounded-full text-xs
+                      ${getDifficultyColor(tutorial.difficulty)}
+                    `}>
+                      {tutorial.difficulty}
+                    </span>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
         </div>
 
         {/* Coming Soon */}

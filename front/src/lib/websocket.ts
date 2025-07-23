@@ -139,19 +139,12 @@ export function useDuelWebSocket(gameId: number, userId: number, config?: Partia
     }
 
     try {
-      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-      if (!token) {
-        setConnectionError('No authentication token found');
-        setConnectionState(ConnectionState.FAILED);
-        return;
-      }
-      
       setConnectionState(reconnectAttempts.current > 0 ? ConnectionState.RECONNECTING : ConnectionState.CONNECTING);
       setConnectionError(null);
 
       const baseUrl = process.env.NEXT_PUBLIC_WS_URL || 
         (process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/^http/, 'ws') : 'ws://localhost:8000');
-      const wsUrl = `${baseUrl}/ws/duel/${gameId}?token=${encodeURIComponent(token)}`;
+      const wsUrl = `${baseUrl}/ws/duel/${gameId}`;
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
@@ -442,19 +435,12 @@ export function useNotificationsWebSocket(userId: number, config?: Partial<Recon
     }
 
     try {
-      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-      if (!token) {
-        setConnectionError('No authentication token found');
-        setConnectionState(ConnectionState.FAILED);
-        return;
-      }
-      
       setConnectionState(reconnectAttempts.current > 0 ? ConnectionState.RECONNECTING : ConnectionState.CONNECTING);
       setConnectionError(null);
 
       const baseUrl = process.env.NEXT_PUBLIC_WS_URL || 
         (process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/^http/, 'ws') : 'ws://localhost:8000');
-      const wsUrl = `${baseUrl}/ws/notifications/${userId}?token=${encodeURIComponent(token)}`;
+      const wsUrl = `${baseUrl}/ws/notifications/${userId}`;
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {

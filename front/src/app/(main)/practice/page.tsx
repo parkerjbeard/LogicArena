@@ -1,17 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { puzzleAPI, userAPI } from '@/lib/api';
+import { puzzleAPI } from '@/lib/api';
 import CarnapFitchEditor from '@/components/LazyCarnapFitchEditor';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { useToast } from '@/components/Toast';
-import { useAuth } from '@/lib/auth/AuthContext';
-import AuthGuard from '@/components/AuthGuard';
-import { UserStats } from '@/components/UserStats';
+import { useToast } from '@/contexts/ToastContext';
 import { HintSystem } from '@/components/HintSystem';
-import { PuzzleHistory } from '@/components/PuzzleHistory';
-import { useAutoSave } from '@/hooks/useAutoSave';
-import type { UserStatistics, PuzzleSubmissionHistory } from '@/types/statistics';
 
 // Puzzle type
 type Puzzle = {
@@ -32,7 +26,6 @@ type ProofResponse = {
 };
 
 function PracticePageContent() {
-  const { user } = useAuth();
   const [puzzle, setPuzzle] = useState<Puzzle | null>(null);
   const [proof, setProof] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -41,47 +34,12 @@ function PracticePageContent() {
   const [loading, setLoading] = useState(false);
   const [hintsUsed, setHintsUsed] = useState(0);
   const [startTime, setStartTime] = useState<Date | null>(null);
-  const [userStats, setUserStats] = useState<UserStatistics | null>(null);
-  const [puzzleHistory, setPuzzleHistory] = useState<PuzzleSubmissionHistory[]>([]);
-  const [loadingStats, setLoadingStats] = useState(true);
   const isMountedRef = useRef(true);
   const { showToast } = useToast();
   
-  // Auto-save functionality
-  const { loadDraft, clearDraft } = useAutoSave(puzzle?.id || null, proof, {
-    enabled: !!puzzle && !submitting,
-    onSave: () => console.log('Draft saved'),
-  });
-  
-  // Fetch user statistics on mount
-  useEffect(() => {
-    const loadUserData = async () => {
-      if (!user) return;
-      
-      try {
-        const [stats, history] = await Promise.all([
-          userAPI.getPracticeStats(),
-          userAPI.getPracticeHistory(10, 0)
-        ]);
-        
-        if (isMountedRef.current) {
-          setUserStats(stats);
-          setPuzzleHistory(history);
-        }
-      } catch (error) {
-        console.error('Failed to load user data:', error);
-      } finally {
-        if (isMountedRef.current) {
-          setLoadingStats(false);
-        }
-      }
-    };
-
-    loadUserData();
-  }, [user]);
-
   // Fetch a random puzzle on mount or when difficulty changes
   useEffect(() => {
+    isMountedRef.current = true; // Ensure mounted state is true when effect runs
     fetchRandomPuzzle();
     
     return () => {
@@ -104,13 +62,6 @@ function PracticePageContent() {
         setResponse(null);
         setHintsUsed(0);
         setStartTime(new Date());
-        
-        // Try to load a saved draft
-        const draft = await loadDraft(data.id);
-        if (draft) {
-          setProof(draft);
-          showToast('Draft restored from previous session', 'info');
-        }
       }
     } catch (error) {
       console.error('Error fetching puzzle:', error);
@@ -161,7 +112,6 @@ function PracticePageContent() {
     }
     
     setSubmitting(true);
-    const solvingTime = startTime ? (new Date().getTime() - startTime.getTime()) / 1000 : undefined;
     
     try {
       const data = await puzzleAPI.submitProof(puzzle.id, proof, hintsUsed);
@@ -171,22 +121,7 @@ function PracticePageContent() {
         
         // Show success message if the proof is valid
         if (data.verdict) {
-          // Clear the draft
-          await clearDraft(puzzle.id);
-          
           showToast('Congratulations! Your proof is correct. Loading new puzzle...', 'success');
-          
-          // Refresh user statistics
-          try {
-            const [newStats, newHistory] = await Promise.all([
-              userAPI.getPracticeStats(),
-              userAPI.getPracticeHistory(10, 0)
-            ]);
-            setUserStats(newStats);
-            setPuzzleHistory(newHistory);
-          } catch (error) {
-            console.error('Failed to refresh stats:', error);
-          }
           
           setTimeout(() => {
             if (isMountedRef.current) {
@@ -219,31 +154,10 @@ function PracticePageContent() {
     setHintsUsed(prev => Math.max(prev, hintLevel));
   };
   
-  // Handle retry from history
-  const handleRetryPuzzle = async (puzzleId: number) => {
-    try {
-      const data = await puzzleAPI.getPuzzle(puzzleId);
-      if (isMountedRef.current) {
-        setPuzzle(data);
-        setProof('');
-        setResponse(null);
-        setHintsUsed(0);
-        setStartTime(new Date());
-        showToast('Puzzle loaded. Good luck!', 'info');
-      }
-    } catch (error) {
-      console.error('Failed to load puzzle:', error);
-      showToast('Failed to load puzzle', 'error');
-    }
-  };
-  
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold">Practice Mode</h1>
-        {user && (
-          <span className="text-gray-400">Welcome back, {user.handle}!</span>
-        )}
       </div>
       
       <div className="mb-6 flex space-x-4">
@@ -277,19 +191,6 @@ function PracticePageContent() {
         </div>
       </div>
       
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
-        <div className="xl:col-span-2">
-          <UserStats stats={userStats} loading={loadingStats} />
-        </div>
-        <div>
-          <PuzzleHistory 
-            history={puzzleHistory} 
-            loading={loadingStats}
-            onRetryPuzzle={handleRetryPuzzle}
-          />
-        </div>
-      </div>
-      
       {puzzle ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="space-y-4">
@@ -302,7 +203,11 @@ function PracticePageContent() {
               
               <div className="bg-gray-900/50 p-4 rounded-md mb-4 border border-gray-700/50">
                 <div className="font-semibold mb-2 text-gray-200">Premises (Γ):</div>
-                <div className="font-mono text-gray-300">{puzzle.gamma}</div>
+                <div className="font-mono text-gray-300 mb-2">{puzzle.gamma}</div>
+                <div className="text-sm text-yellow-400 bg-yellow-900/20 p-2 rounded border border-yellow-600/30 mt-2">
+                  <strong>Note:</strong> You must enter each premise as a line in your proof using `:PR` justification.
+                  For example: <code className="bg-gray-800/50 px-1 rounded text-yellow-300">P→Q :PR</code>
+                </div>
               </div>
               
               <div className="bg-gray-900/50 p-4 rounded-md border border-gray-700/50">
@@ -313,6 +218,7 @@ function PracticePageContent() {
             
             <HintSystem 
               puzzleId={puzzle.id} 
+              currentProof={proof}
               onHintUsed={handleHintUsed}
               disabled={submitting || !!response?.verdict}
             />
@@ -358,6 +264,7 @@ function PracticePageContent() {
               height="400px"
               theme="dark"
               showSyntaxGuide={true}
+              premises={puzzle.gamma}
             />
             
             <div className="mt-4">
@@ -413,10 +320,8 @@ function PracticePageContent() {
 
 export default function PracticePage() {
   return (
-    <AuthGuard>
-      <ErrorBoundary>
-        <PracticePageContent />
-      </ErrorBoundary>
-    </AuthGuard>
+    <ErrorBoundary>
+      <PracticePageContent />
+    </ErrorBoundary>
   );
-} 
+}

@@ -20,7 +20,8 @@ interface ToastOptions {
 }
 
 interface ToastContextValue {
-  showToast: (options: ToastOptions | string) => void;
+  showToast: (message: string, type?: ToastType, duration?: number) => void;
+  hideToast: () => void;
 }
 
 const ToastContext = createContext<ToastContextValue | undefined>(undefined);
@@ -70,12 +71,7 @@ const colorMap = {
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const showToast = useCallback((options: ToastOptions | string) => {
-    const toastOptions: ToastOptions = typeof options === 'string' 
-      ? { message: options, type: 'info' }
-      : options;
-      
-    const { message, type = 'info', duration = 5000 } = toastOptions;
+  const showToast = useCallback((message: string, type: ToastType = 'info', duration: number = 5000) => {
     const id = Date.now().toString();
     const newToast: Toast = { id, message, type, duration };
     
@@ -88,12 +84,16 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, []);
 
+  const hideToast = useCallback(() => {
+    setToasts([]);
+  }, []);
+
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 
   return (
-    <ToastContext.Provider value={{ showToast }}>
+    <ToastContext.Provider value={{ showToast, hideToast }}>
       {children}
       <div className="fixed bottom-4 right-4 z-50 space-y-2" role="region" aria-label="Notifications">
         <AnimatePresence>

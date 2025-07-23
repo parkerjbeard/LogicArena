@@ -15,13 +15,22 @@ import {
 } from '@heroicons/react/24/outline';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// Lazy load Monaco editor wrapper for desktop only
-const MonacoEditorWrapper = dynamic(
-  () => import('./MonacoEditorWrapper'),
-  {
-    ssr: false,
-    loading: () => <div className="h-full flex items-center justify-center">Loading editor...</div>
-  }
+// Simple textarea replacement for desktop
+const SimpleTextareaEditor: React.FC<{
+  value: string;
+  onChange: (value: string) => void;
+  height: string;
+  readOnly: boolean;
+}> = ({ value, onChange, height, readOnly }) => (
+  <textarea
+    value={value}
+    onChange={(e) => onChange(e.target.value)}
+    readOnly={readOnly}
+    className="w-full resize-none font-mono text-sm bg-gray-900 text-gray-200 p-4 border-0 focus:outline-none"
+    style={{ height }}
+    placeholder="Enter your proof here..."
+    spellCheck={false}
+  />
 );
 
 interface ResponsiveCarnapEditorProps {
@@ -214,33 +223,7 @@ const ResponsiveCarnapEditor: React.FC<ResponsiveCarnapEditorProps> = ({
   // Use mobile editor for touch devices or small screens
   const useMobileEditor = isMobile || inputMethod === 'touch';
 
-  const handleEditorDidMount = useCallback((editor: any, monaco: any) => {
-    // Configure Monaco for desktop
-    editor.updateOptions({
-      fontFamily: '"JetBrains Mono", "Fira Code", "Consolas", monospace',
-      fontSize: 14,
-      lineNumbers: 'on',
-      minimap: { enabled: false },
-      scrollBeyondLastLine: false,
-      wordWrap: 'on',
-      automaticLayout: true,
-      tabSize: 4,
-      insertSpaces: true,
-      detectIndentation: false,
-      readOnly,
-      renderWhitespace: 'selection',
-    });
-    
-    // Register Carnap Fitch language
-    monaco.languages.register({ id: 'carnap-fitch' });
-    
-    // Configure language features
-    monaco.languages.setLanguageConfiguration('carnap-fitch', {
-      comments: { lineComment: '#' },
-      brackets: [['(', ')']],
-      autoClosingPairs: [{ open: '(', close: ')' }],
-    });
-  }, [readOnly]);
+  // No longer needed - removed Monaco configuration
 
   // Syntax guide content
   const SyntaxGuide = () => (
@@ -351,17 +334,11 @@ const ResponsiveCarnapEditor: React.FC<ResponsiveCarnapEditorProps> = ({
         </div>
       ) : (
         <div style={{ height }} className="border border-gray-700/50 rounded-lg overflow-hidden">
-          <MonacoEditorWrapper
+          <SimpleTextareaEditor
             value={value}
-            onChange={(val) => onChange(val || '')}
-            language="carnap-fitch"
-            theme={theme === 'dark' ? 'vs-dark' : 'light'}
-            onMount={handleEditorDidMount}
+            onChange={onChange}
             height={height}
-            options={{
-              readOnly,
-              minimap: { enabled: false },
-            }}
+            readOnly={readOnly}
           />
         </div>
       )}

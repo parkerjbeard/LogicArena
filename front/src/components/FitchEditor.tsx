@@ -1,8 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect, useState } from 'react';
-import { Editor, Monaco } from '@monaco-editor/react';
-import type { editor } from 'monaco-editor';
+import React, { useRef } from 'react';
 
 interface FitchEditorProps {
   value: string;
@@ -19,110 +17,38 @@ const FitchEditor: React.FC<FitchEditorProps> = ({
   onSubmit,
   readOnly = false,
   height = '400px',
-  theme = 'light',
+  theme = 'dark',
 }) => {
-  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
-  const monacoRef = useRef<Monaco | null>(null);
-  
-  // Configure Monaco editor
-  const handleEditorDidMount = (editor: editor.IStandaloneCodeEditor, monaco: Monaco) => {
-    editorRef.current = editor;
-    monacoRef.current = monaco;
-    
-    // Set up editor options
-    editor.updateOptions({
-      fontFamily: '"JetBrains Mono", monospace',
-      fontSize: 14,
-      lineNumbers: 'on',
-      minimap: { enabled: false },
-      scrollBeyondLastLine: false,
-      wordWrap: 'on',
-      automaticLayout: true,
-      tabSize: 2,
-      readOnly,
-    });
-    
-    // Add key binding for auto-indentation
-    editor.addCommand(monaco.KeyCode.Tab, () => {
-      const selection = editor.getSelection();
-      if (selection) {
-        const position = selection.getPosition();
-        const lineContent = editor.getModel()?.getLineContent(position.lineNumber) || '';
-        
-        // If line ends with '{', add two spaces on next line
-        if (lineContent.trim().endsWith('{')) {
-          editor.trigger('keyboard', 'type', { text: '\n  ' });
-          return;
-        }
-        
-        // Otherwise, insert regular tab
-        editor.trigger('keyboard', 'tab', {});
-      }
-    });
-    
-    // Create syntax highlighting for Fitch notation
-    monaco.languages.register({ id: 'fitch' });
-    monaco.languages.setMonarchTokensProvider('fitch', {
-      tokenizer: {
-        root: [
-          [/\d+\./, 'line-number'],
-          [/\[.*?\]/, 'premise'],
-          [/\{|\}/, 'bracket'],
-          [/[A-Z][a-zA-Z0-9]*/, 'variable'],
-          [/¬|∧|∨|→|↔|⊥/, 'operator'],
-          [/\(|\)/, 'parenthesis'],
-        ],
-      },
-    });
-    
-    // Add theming
-    monaco.editor.defineTheme('fitchLight', {
-      base: 'vs',
-      inherit: true,
-      rules: [
-        { token: 'line-number', foreground: '666666', fontStyle: 'bold' },
-        { token: 'premise', foreground: '008800' },
-        { token: 'bracket', foreground: 'AA0000', fontStyle: 'bold' },
-        { token: 'variable', foreground: '0000AA' },
-        { token: 'operator', foreground: 'AA00AA' },
-      ],
-      colors: {},
-    });
-    
-    monaco.editor.defineTheme('fitchDark', {
-      base: 'vs-dark',
-      inherit: true,
-      rules: [
-        { token: 'line-number', foreground: 'AAAAAA', fontStyle: 'bold' },
-        { token: 'premise', foreground: '88CC88' },
-        { token: 'bracket', foreground: 'FF6666', fontStyle: 'bold' },
-        { token: 'variable', foreground: '88AAFF' },
-        { token: 'operator', foreground: 'FFAAFF' },
-      ],
-      colors: {},
-    });
-    
-    // Set the theme
-    monaco.editor.setTheme(theme === 'light' ? 'fitchLight' : 'fitchDark');
-    
-    // Add keyboard shortcut for submission
-    if (onSubmit) {
-      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, onSubmit);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      onSubmit?.();
+      return;
+    }
+
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const textarea = e.currentTarget;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const newValue = value.substring(0, start) + '  ' + value.substring(end);
+      onChange(newValue);
+      
+      setTimeout(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + 2;
+      }, 0);
     }
   };
-  
+
   // Format Fitch-style proof with proper indentation
   const formatFitchProof = () => {
-    if (!editorRef.current) return;
+    if (!textareaRef.current) return;
     
-    const editor = editorRef.current;
-    const model = editor.getModel();
-    if (!model) return;
-    
-    const text = model.getValue();
-    const lines = text.split('\n');
-    
+    const lines = value.split('\n');
     let indentLevel = 0;
+    
     const formattedLines = lines.map((line) => {
       const trimmedLine = line.trim();
       
@@ -143,28 +69,27 @@ const FitchEditor: React.FC<FitchEditorProps> = ({
       return formattedLine;
     });
     
-    // Update the editor value
-    editor.setValue(formattedLines.join('\n'));
-  };
-  
-  // Handle editor value changes
-  const handleEditorChange = (value: string | undefined) => {
-    if (value !== undefined) {
-      onChange(value);
-    }
+    onChange(formattedLines.join('\n'));
   };
   
   return (
     <div className="fitch-editor-container border border-gray-300 dark:border-gray-700 rounded-lg overflow-hidden">
-      <Editor
-        height={height}
-        language="fitch"
+      <textarea
+        ref={textareaRef}
         value={value}
-        onChange={handleEditorChange}
-        onMount={handleEditorDidMount}
-        options={{
-          automaticLayout: true,
-        }}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={handleKeyDown}
+        readOnly={readOnly}
+        className={`
+          w-full resize-none font-mono text-sm
+          ${theme === 'dark' ? 'bg-gray-900 text-gray-200' : 'bg-white text-gray-900'}
+          border-0 rounded-none
+          focus:outline-none focus:ring-0
+          p-4
+        `}
+        style={{ height }}
+        placeholder="Enter your Fitch proof here..."
+        spellCheck={false}
       />
       {!readOnly && (
         <div className="bg-gray-100 dark:bg-gray-800 p-2 flex justify-between">
@@ -188,4 +113,4 @@ const FitchEditor: React.FC<FitchEditorProps> = ({
   );
 };
 
-export default FitchEditor; 
+export default FitchEditor;

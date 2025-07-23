@@ -37,9 +37,14 @@ export interface PuzzleSubmissionHistory {
 }
 
 export interface PuzzleHint {
-  level: number; // 1, 2, or 3
+  type: string;
   content: string;
-  rule_type?: string; // e.g., "MP", "CP", etc.
+  priority: number;
+  target_line?: number;
+  suggested_rule?: string;
+  confidence: number;
+  level?: number; // For backward compatibility
+  rule_type?: string; // For backward compatibility
 }
 
 export interface PuzzleProgress {

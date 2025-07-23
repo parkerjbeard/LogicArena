@@ -1,7 +1,6 @@
 import '../styles/globals.css';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
-import { AuthProvider } from '@/lib/auth/AuthContext';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { InputProvider } from '@/contexts/InputContext';
 
@@ -31,11 +30,9 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.className} min-h-screen`}>
         <InputProvider>
-          <AuthProvider>
-            <ToastProvider>
-              {children}
-            </ToastProvider>
-          </AuthProvider>
+          <ToastProvider>
+            {children}
+          </ToastProvider>
         </InputProvider>
       </body>
     </html>
