@@ -34,22 +34,22 @@ const nextConfig = {
   
   // Configure webpack for better optimization with Bun compatibility
   webpack: (config, { dev, isServer }) => {
-    // Fix Monaco Editor initialization
+    // Basic webpack optimizations
     if (!isServer) {
+      // Ensure resolve exists and has fallback property
+      if (!config.resolve) {
+        config.resolve = {};
+      }
+      if (!config.resolve.fallback) {
+        config.resolve.fallback = {};
+      }
+      
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
         path: false,
         crypto: false,
       };
-      
-      // Add webpack plugin to define globals for Monaco
-      const webpack = require('webpack');
-      config.plugins.push(
-        new webpack.DefinePlugin({
-          'global': 'globalThis',
-        })
-      );
     }
     
     // Bun-specific optimizations
@@ -83,7 +83,7 @@ const nextConfig = {
           cacheGroups: {
             // Split vendor code
             vendor: {
-              test: /[\\/]node_modules[\\/]/,
+              test: /(^|[\\/])node_modules[\\/]/,
               name: 'vendor',
               priority: 10,
               reuseExistingChunk: true,
@@ -95,15 +95,6 @@ const nextConfig = {
               priority: 5,
               reuseExistingChunk: true,
               enforce: true,
-            },
-            // Separate large libraries
-            monaco: {
-              test: /[\\/]node_modules[\\/](monaco-editor|@monaco-editor)[\\/]/,
-              name: 'monaco',
-              priority: 20,
-              reuseExistingChunk: true,
-              enforce: true,
-              chunks: 'async',
             },
             // Separate UI libraries
             ui: {
@@ -124,7 +115,7 @@ const nextConfig = {
           },
         },
         // More aggressive minification
-        minimizer: config.optimization.minimizer.map(plugin => {
+        minimizer: config.optimization.minimizer ? config.optimization.minimizer.map(plugin => {
           if (plugin.constructor.name === 'TerserPlugin') {
             plugin.options.terserOptions = {
               ...plugin.options.terserOptions,
@@ -136,7 +127,7 @@ const nextConfig = {
             };
           }
           return plugin;
-        }),
+        }) : [],
       };
     }
 
@@ -154,16 +145,12 @@ const nextConfig = {
 
   // Experimental features for better performance with Bun
   experimental: {
-    // Enable modern JavaScript output
-    // optimizeCss: true, // Disabled - requires critters package
-    // Enable server components tree shaking
-    serverComponentsExternalPackages: ['monaco-editor', '@monaco-editor/react'],
     // Optimize bundle size with module imports
     optimizePackageImports: ['lucide-react', 'framer-motion', '@heroicons/react', 'lodash'],
     // Use Webpack's persistent caching
     webpackBuildWorker: true,
     // Enable partial prerendering for faster initial loads
-    // ppr: true, // Disabled - requires Next.js canary version
+    // ppr: true, // Temporarily disabled - requires Next.js canary version
   },
 
   // Configure compression headers

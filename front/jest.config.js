@@ -13,8 +13,29 @@ const customJestConfig = {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   testMatch: [
-    '**/__tests__/**/*.(js|jsx|ts|tsx)',
-    '**/*.(test|spec).(js|jsx|ts|tsx)',
+    '<rootDir>/src/**/__tests__/**/*.(js|jsx|ts|tsx)',
+    '<rootDir>/src/**/*.(test|spec).(js|jsx|ts|tsx)',
+  ],
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/~/.bun/',
+    '/.bun/',
+    '/dist/',
+    '/.next/',
+  ],
+  watchPathIgnorePatterns: [
+    '/node_modules/',
+    '/~/.bun/',
+    '/.bun/',
+    '/dist/',
+    '/.next/',
+  ],
+  modulePathIgnorePatterns: [
+    '/node_modules/',
+    '/~/.bun/',
+    '/.bun/',
+    '/dist/',
+    '/.next/',
   ],
   collectCoverageFrom: [
     'src/**/*.{js,jsx,ts,tsx}',
@@ -29,6 +50,9 @@ const customJestConfig = {
       lines: 70,
       statements: 70,
     },
+  },
+  haste: {
+    forceNodeFilesystemAPI: true,
   },
 }
 
