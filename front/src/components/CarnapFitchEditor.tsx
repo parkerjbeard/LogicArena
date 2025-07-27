@@ -50,6 +50,65 @@ const CarnapFitchEditor: React.FC<CarnapFitchEditorProps> = ({
       return;
     }
 
+    // Smart backspace - remove full indentation
+    if (e.key === 'Backspace' && !e.shiftKey) {
+      const textarea = e.currentTarget;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      
+      // Only handle if cursor is at the same position (no selection)
+      if (start === end && start > 0) {
+        // Get the current line start position
+        const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+        const beforeCursor = value.substring(lineStart, start);
+        
+        // Check if we're at the beginning of indentation (only spaces before cursor)
+        if (beforeCursor && /^  +$/.test(beforeCursor) && beforeCursor.length >= 2) {
+          e.preventDefault();
+          // Remove 2 spaces
+          const newValue = value.substring(0, start - 2) + value.substring(end);
+          onChange(newValue);
+          
+          setTimeout(() => {
+            textarea.selectionStart = textarea.selectionEnd = start - 2;
+          }, 0);
+          return;
+        }
+      }
+    }
+
+    // Auto-indentation on Enter
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const textarea = e.currentTarget;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      
+      // Get current line
+      const lines = value.substring(0, start).split('\n');
+      const currentLine = lines[lines.length - 1] || '';
+      
+      // Calculate current indentation
+      const currentIndent = currentLine.match(/^\s*/)?.[0] || '';
+      
+      // Check if current line starts with "show" (case-insensitive)
+      const isShowLine = /^\s*show\s+/i.test(currentLine);
+      
+      // Add extra indentation for show lines
+      const newIndent = isShowLine ? currentIndent + '  ' : currentIndent;
+      
+      // Insert newline with proper indentation
+      const newValue = value.substring(0, start) + '\n' + newIndent + value.substring(end);
+      onChange(newValue);
+      
+      // Set cursor position after indentation
+      setTimeout(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + 1 + newIndent.length;
+      }, 0);
+      
+      return;
+    }
+
     if (e.key === 'Tab') {
       e.preventDefault();
       const textarea = e.currentTarget;
@@ -80,7 +139,7 @@ const CarnapFitchEditor: React.FC<CarnapFitchEditorProps> = ({
       }, 0);
     }
   };
-  
+
   return (
     <div className="carnap-fitch-editor-container">
       {showSyntaxGuide && (
@@ -107,10 +166,10 @@ const CarnapFitchEditor: React.FC<CarnapFitchEditorProps> = ({
                 <code className="bg-gray-900/50 px-2 py-1 rounded border border-gray-700/50">
                   formula :justification
                 </code>
-                <p className="font-semibold mb-1 mt-3 text-yellow-400">Important:</p>
+                <p className="font-semibold mb-1 mt-3 text-yellow-400">Note:</p>
                 <p className="text-sm text-yellow-300">
-                  You must enter each premise in your proof using <code className="bg-gray-900/50 px-1 rounded">:PR</code> justification.
-                  Premises can be at any line position.
+                  You must enter each premise as a line in your proof using <code className="bg-gray-900/50 px-1 rounded">:PR</code> justification.
+                  For example: <code className="bg-gray-900/50 px-1 rounded text-yellow-300">P→Q :PR</code>
                 </p>
               </div>
               
@@ -144,14 +203,6 @@ Q    :MP 1,2`}
               </div>
               
               <div className="flex gap-2 flex-wrap">
-                {premises && (
-                  <button
-                    onClick={populatePremises}
-                    className="text-xs px-2 py-1 bg-blue-800/30 border border-blue-700 rounded hover:bg-blue-700/30 text-blue-300 hover:text-white transition-colors"
-                  >
-                    Auto-fill Premises
-                  </button>
-                )}
                 <button
                   onClick={() => insertTemplate('Show ')}
                   className="text-xs px-2 py-1 bg-gray-800/30 border border-gray-700 rounded hover:bg-gray-700/30 text-gray-300 hover:text-white transition-colors"
@@ -159,7 +210,7 @@ Q    :MP 1,2`}
                   Insert Show
                 </button>
                 <button
-                  onClick={() => insertTemplate('    :AS\n')}
+                  onClick={() => insertTemplate('  :AS\n')}
                   className="text-xs px-2 py-1 bg-gray-800/30 border border-gray-700 rounded hover:bg-gray-700/30 text-gray-300 hover:text-white transition-colors"
                 >
                   Insert Assumption
@@ -177,28 +228,64 @@ Q    :MP 1,2`}
       )}
       
       <div className={`border border-gray-700 ${showSyntaxGuide ? 'rounded-b-lg' : 'rounded-lg'} overflow-hidden`}>
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-          readOnly={readOnly}
-          className={`
-            w-full resize-none font-mono text-sm
-            bg-gray-900 border-0 rounded-none
-            text-gray-200 placeholder-gray-500
-            focus:outline-none focus:ring-0
-            p-4
-          `}
-          style={{ height }}
-          placeholder="Enter your proof here. Each line should contain a formula followed by its justification.
+        <div className="flex bg-gray-900 relative">
+          {/* Line numbers column */}
+          <div className="flex-shrink-0 bg-gray-900 text-gray-500 text-sm font-mono select-none pt-4 pb-4 pr-3 pl-2 text-right border-r border-gray-800" style={{ minHeight: height, minWidth: '3rem' }}>
+            {value.split('\n').map((_, index) => (
+              <div key={index} style={{ lineHeight: '1.5rem' }}>
+                {index + 1}
+              </div>
+            ))}
+          </div>
+          
+          {/* Indent guides */}
+          <div className="absolute left-[3.5rem] top-0 pt-4 pointer-events-none" style={{ minHeight: height }}>
+            {value.split('\n').map((line, index) => {
+              const indentLevel = Math.floor((line.length - line.trimStart().length) / 2);
+              return (
+                <div key={index} className="flex" style={{ lineHeight: '1.5rem', height: '1.5rem' }}>
+                  {Array.from({ length: indentLevel }, (_, i) => (
+                    <div
+                      key={i}
+                      className="w-2 border-l-2 border-gray-600/50"
+                      style={{ marginLeft: i === 0 ? '0.5rem' : '0' }}
+                    >
+                      {i === indentLevel - 1 && (
+                        <span className="text-gray-500 font-bold" style={{ marginLeft: '-2px' }}>│</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+          
+          
+          {/* Textarea */}
+          <textarea
+            ref={textareaRef}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            readOnly={readOnly}
+            className={`
+              flex-1 resize-none font-mono text-sm
+              bg-gray-900 border-0 rounded-none
+              text-gray-200 placeholder-gray-500
+              focus:outline-none focus:ring-0
+              p-4 pl-4
+            `}
+            style={{ height, lineHeight: '1.5rem' }}
+            placeholder="Enter your proof here. Each line should contain a formula followed by its justification.
 
 Example:
 P→Q :PR
 P :PR  
 Q :MP 1,2"
-          spellCheck={false}
-        />
+            spellCheck={false}
+          />
+        </div>
+        
         {!readOnly && (
           <div className="bg-gray-800 p-2 flex justify-between items-center">
             <div className="text-xs text-gray-400">

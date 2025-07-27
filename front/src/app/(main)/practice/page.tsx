@@ -6,6 +6,7 @@ import CarnapFitchEditor from '@/components/LazyCarnapFitchEditor';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useToast } from '@/contexts/ToastContext';
 import { HintSystem } from '@/components/HintSystem';
+import { useAuth } from '@/hooks/useAuth';
 
 // Puzzle type
 type Puzzle = {
@@ -15,6 +16,9 @@ type Puzzle = {
   difficulty: number;
   best_len: number;
   created: string;
+  category?: string;
+  chapter?: number;
+  nested_depth?: number;
 };
 
 // Response from the proof checker
@@ -36,11 +40,14 @@ function PracticePageContent() {
   const [startTime, setStartTime] = useState<Date | null>(null);
   const isMountedRef = useRef(true);
   const { showToast } = useToast();
+  const { userId } = useAuth();
   
   // Fetch a random puzzle on mount or when difficulty changes
   useEffect(() => {
     isMountedRef.current = true; // Ensure mounted state is true when effect runs
-    fetchRandomPuzzle();
+    if (!puzzle) { // Only fetch if we don't have a puzzle
+      fetchRandomPuzzle();
+    }
     
     return () => {
       isMountedRef.current = false;
@@ -53,8 +60,20 @@ function PracticePageContent() {
     
     setLoading(true);
     try {
-      const parsedDifficulty = difficulty ? parseInt(difficulty, 10) : undefined;
-      const data = await puzzleAPI.getRandomPuzzle(parsedDifficulty);
+      console.log('Fetching puzzle with difficulty:', difficulty);
+      
+      // Parse difficulty - could be a number or a category string
+      let data;
+      if (difficulty && isNaN(parseInt(difficulty))) {
+        // It's a category
+        data = await puzzleAPI.getRandomPuzzleByCategory(difficulty);
+      } else {
+        // It's a numeric difficulty or empty
+        const parsedDifficulty = difficulty ? parseInt(difficulty, 10) : undefined;
+        data = await puzzleAPI.getRandomPuzzle(parsedDifficulty);
+      }
+      
+      console.log('Puzzle data received:', data);
       
       if (isMountedRef.current) {
         setPuzzle(data);
@@ -65,8 +84,9 @@ function PracticePageContent() {
       }
     } catch (error) {
       console.error('Error fetching puzzle:', error);
+      console.error('Error details:', error.response?.data || error.message);
       if (isMountedRef.current) {
-        showToast('Failed to fetch puzzle. Please try again.', 'error');
+        showToast(`Failed to fetch puzzle: ${error.response?.data?.detail || error.message}`, 'error');
       }
     } finally {
       if (isMountedRef.current) {
@@ -114,7 +134,7 @@ function PracticePageContent() {
     setSubmitting(true);
     
     try {
-      const data = await puzzleAPI.submitProof(puzzle.id, proof, hintsUsed);
+      const data = await puzzleAPI.submitProof(puzzle.id, proof, hintsUsed, userId || undefined);
       
       if (isMountedRef.current) {
         setResponse(data);
@@ -166,17 +186,31 @@ function PracticePageContent() {
           <div className="flex items-center space-x-4">
             <select
               id="difficulty"
-              className="px-3 py-2 bg-gray-800/50 border border-gray-700 rounded-md text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-600 transition-colors"
               value={difficulty}
               onChange={(e) => handleDifficultyChange(e.target.value)}
               aria-label="Select puzzle difficulty"
             >
               <option value="">Any</option>
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((level) => (
-                <option key={level} value={level}>
-                  {level}
-                </option>
-              ))}
+              <optgroup label="Difficulty Levels">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((level) => (
+                  <option key={level} value={level}>
+                    {level}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Chapter Categories">
+                <option value="chapter1">Ch 1: Subject Matter (1-3)</option>
+                <option value="chapter2">Ch 2: Notation (2-4)</option>
+                <option value="chapter3">Ch 3: Derivations (3-5)</option>
+                <option value="chapter4">Ch 4: Conditional (4-6)</option>
+                <option value="chapter5">Ch 5: Nested (6-8)</option>
+                <option value="chapter6">Ch 6: Indirect (5-8)</option>
+              </optgroup>
+              <optgroup label="Special Categories">
+                <option value="any">Mixed Difficulty</option>
+                <option value="hard">Expert (8-10)</option>
+              </optgroup>
             </select>
             
             <button
@@ -192,9 +226,11 @@ function PracticePageContent() {
       </div>
       
       {puzzle ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          {/* Left column - Puzzle info and additional content */}
           <div className="space-y-4">
-            <div className="bg-gray-800/30 backdrop-blur-sm rounded-lg p-6 border border-gray-700/50">
+            {/* Puzzle info card */}
+            <div className="bg-gray-800/30 backdrop-blur-sm rounded-lg p-6 border border-gray-700/50" style={{marginTop: '38px'}}>
               <h2 className="text-xl font-semibold mb-4 text-white">Puzzle #{puzzle.id}</h2>
               <div className="mb-4">
                 <div className="text-sm text-gray-400">Difficulty: {puzzle.difficulty}</div>
@@ -204,10 +240,17 @@ function PracticePageContent() {
               <div className="bg-gray-900/50 p-4 rounded-md mb-4 border border-gray-700/50">
                 <div className="font-semibold mb-2 text-gray-200">Premises (Γ):</div>
                 <div className="font-mono text-gray-300 mb-2">{puzzle.gamma}</div>
-                <div className="text-sm text-yellow-400 bg-yellow-900/20 p-2 rounded border border-yellow-600/30 mt-2">
-                  <strong>Note:</strong> You must enter each premise as a line in your proof using `:PR` justification.
-                  For example: <code className="bg-gray-800/50 px-1 rounded text-yellow-300">P→Q :PR</code>
-                </div>
+                <button
+                  onClick={() => {
+                    const premiseArray = puzzle.gamma.split(',').map(p => p.trim());
+                    const premiseLines = premiseArray.map(premise => `${premise} :PR`).join('\n');
+                    const newValue = proof.trim() ? `${premiseLines}\n${proof}` : premiseLines;
+                    setProof(newValue);
+                  }}
+                  className="w-full mt-2 px-3 py-2 bg-blue-800/30 border border-blue-700 rounded hover:bg-blue-700/30 text-blue-300 hover:text-white transition-colors text-sm font-medium"
+                >
+                  Auto-fill Premises
+                </button>
               </div>
               
               <div className="bg-gray-900/50 p-4 rounded-md border border-gray-700/50">
@@ -216,6 +259,7 @@ function PracticePageContent() {
               </div>
             </div>
             
+            {/* Additional content below */}
             <HintSystem 
               puzzleId={puzzle.id} 
               currentProof={proof}
@@ -255,37 +299,39 @@ function PracticePageContent() {
             )}
           </div>
           
-          <div>
+          {/* Right column - Proof editor with explicit positioning */}
+          <div className="flex flex-col">
             <div className="font-semibold mb-2 text-white">Your Proof:</div>
-            <CarnapFitchEditor
-              value={proof}
-              onChange={setProof}
-              onSubmit={handleSubmit}
-              height="400px"
-              theme="dark"
-              showSyntaxGuide={true}
-              premises={puzzle.gamma}
-            />
-            
-            <div className="mt-4">
-              <button
-                onClick={handleSubmit}
-                disabled={submitting || !proof.trim()}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed w-full font-medium"
-                aria-label="Submit proof for validation"
-              >
-                {submitting ? (
-                  <span className="flex items-center justify-center">
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Validating...
-                  </span>
-                ) : 'Submit Proof'}
-              </button>
+            <div className="bg-gray-800/30 backdrop-blur-sm rounded-lg p-6 border border-gray-700/50 flex-1">
+              <CarnapFitchEditor
+                value={proof}
+                onChange={setProof}
+                onSubmit={handleSubmit}
+                height="400px"
+                theme="dark"
+                showSyntaxGuide={true}
+                premises={puzzle.gamma}
+              />
+              
+              <div className="mt-4">
+                <button
+                  onClick={handleSubmit}
+                  disabled={submitting || !proof.trim()}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed w-full font-medium"
+                  aria-label="Submit proof for validation"
+                >
+                  {submitting ? (
+                    <span className="flex items-center justify-center">
+                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Validating...
+                    </span>
+                  ) : 'Submit Proof'}
+                </button>
+              </div>
             </div>
-            
           </div>
         </div>
       ) : (

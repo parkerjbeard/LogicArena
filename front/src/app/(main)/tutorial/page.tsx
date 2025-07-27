@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
+import { useAuth } from '@/hooks/useAuth';
 import { 
   BookOpen, 
   Play, 
@@ -153,6 +154,7 @@ const tutorials: Tutorial[] = [
 export default function TutorialsPage() {
   const [selectedTutorial, setSelectedTutorial] = useState<Tutorial | null>(null);
   const [completedTutorials, setCompletedTutorials] = useState<string[]>([]);
+  const { userId } = useAuth();
 
 
   const handleStartTutorial = (tutorial: Tutorial) => {
@@ -161,9 +163,37 @@ export default function TutorialsPage() {
     }
   };
 
-  const handleCompleteTutorial = () => {
+  const handleCompleteTutorial = async () => {
     if (selectedTutorial) {
       setCompletedTutorials([...completedTutorials, selectedTutorial.id]);
+      
+      // Track tutorial completion in the backend
+      try {
+        // Use authenticated user ID or fallback to anonymous
+        const actualUserId = userId || 1;
+        
+        const response = await fetch('/api/tutorials/complete', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            user_id: userId,
+            tutorial_id: selectedTutorial.id,
+            progress_data: {
+              completed_steps: selectedTutorial.steps.length,
+              total_steps: selectedTutorial.steps.length
+            }
+          })
+        });
+        
+        if (response.ok) {
+          console.log(`Tutorial ${selectedTutorial.id} completion tracked successfully`);
+        }
+      } catch (error) {
+        console.error('Failed to track tutorial completion:', error);
+      }
+      
       setSelectedTutorial(null);
     }
   };

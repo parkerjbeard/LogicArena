@@ -2,209 +2,262 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import api from '@/lib/api';
+import { userAPI } from '@/lib/api';
+import { motion } from 'framer-motion';
+import { ResponsiveContainer, ResponsiveStack, ResponsiveCard, CardHeader, CardContent, ResponsiveButton } from '@/components/ui';
+import { useBreakpoint } from '@/hooks/useResponsive';
 
 interface LeaderboardEntry {
-  id: number;
+  rank: number;
+  user_id: number;
   handle: string;
+  avatar_url?: string;
+  level: number;
+  experience_points: number;
   rating: number;
+  puzzles_solved: number;
   games_won: number;
-  games_played: number;
+  win_rate: number;
+  streak_days: number;
 }
 
 interface LeaderboardResponse {
-  rankings: LeaderboardEntry[];
-  total: number;
+  entries: LeaderboardEntry[];
+  total_users: number;
   page: number;
-  size: number;
+  per_page: number;
+  sort_by: string;
 }
 
-export default function Leaderboard() {
+type SortBy = 'experience_points' | 'rating' | 'puzzles_solved';
+
+const sortOptions: { value: SortBy; label: string; color: string }[] = [
+  { value: 'rating', label: 'Rating', color: 'text-blue-400' },
+  { value: 'experience_points', label: 'Experience', color: 'text-yellow-400' },
+  { value: 'puzzles_solved', label: 'Puzzles Solved', color: 'text-green-400' },
+];
+
+export default function LeaderboardPage() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
-  const router = useRouter();
+  const [sortBy, setSortBy] = useState<SortBy>('rating');
+  const [page, setPage] = useState(1);
+  const { isMobile } = useBreakpoint();
 
   useEffect(() => {
-    const fetchLeaderboard = async () => {
-      setIsLoading(true);
-      try {
-        const response = await api.get(`/users/leaderboard?page=${currentPage}&size=${pageSize}`);
-        setLeaderboard(response.data);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     fetchLeaderboard();
-  }, [currentPage]);
+  }, [sortBy, page]);
 
-  const handleNextPage = () => {
-    if (leaderboard && currentPage < Math.ceil(leaderboard.total / pageSize)) {
-      setCurrentPage(currentPage + 1);
+  const fetchLeaderboard = async () => {
+    try {
+      setLoading(true);
+      const data = await userAPI.getLeaderboard(50, (page - 1) * 50, sortBy);
+      setLeaderboard(data);
+    } catch (err) {
+      setError('Failed to load leaderboard');
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handlePrevPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(currentPage - 1);
+  const getRankBadge = (rank: number) => {
+    if (rank === 1) return '🥇';
+    if (rank === 2) return '🥈';
+    if (rank === 3) return '🥉';
+    return null;
+  };
+
+  const getRankColor = (rank: number) => {
+    if (rank === 1) return 'text-yellow-400 bg-yellow-900/20 border-yellow-600/50';
+    if (rank === 2) return 'text-gray-300 bg-gray-700/20 border-gray-600/50';
+    if (rank === 3) return 'text-orange-400 bg-orange-900/20 border-orange-600/50';
+    return '';
+  };
+
+  const getSortValue = (entry: LeaderboardEntry) => {
+    switch (sortBy) {
+      case 'experience_points':
+        return entry.experience_points.toLocaleString();
+      case 'rating':
+        return entry.rating.toLocaleString();
+      case 'puzzles_solved':
+        return entry.puzzles_solved.toLocaleString();
+      default:
+        return '';
     }
   };
 
-  // Check if we should disable the next page button
-  const isLastPage = !!leaderboard && currentPage >= Math.ceil(leaderboard.total / pageSize);
+  if (loading && !leaderboard) {
+    return (
+      <ResponsiveContainer maxWidth="lg">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-gray-400">Loading leaderboard...</div>
+        </div>
+      </ResponsiveContainer>
+    );
+  }
+
+  if (error || !leaderboard) {
+    return (
+      <ResponsiveContainer maxWidth="lg">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-red-400">{error || 'Failed to load leaderboard'}</div>
+        </div>
+      </ResponsiveContainer>
+    );
+  }
+
+  const totalPages = Math.ceil(leaderboard.total_users / leaderboard.per_page);
 
   return (
-    <main className="flex min-h-screen flex-col items-center">
-      <div className="z-10 w-full max-w-5xl items-center justify-between font-mono text-sm flex">
-        <div className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-          <h1 className="text-2xl font-bold">LogicArena-α</h1>
-        </div>
-        <div className="fixed bottom-0 left-0 flex h-48 w-full items-end justify-center bg-gradient-to-t from-white via-white dark:from-black dark:via-black lg:static lg:h-auto lg:w-auto lg:bg-none">
-          <Link
-            href="/"
-            className="pointer-events-none flex place-items-center gap-2 p-8 lg:pointer-events-auto lg:p-0"
-          >
-            Home
-          </Link>
-        </div>
-      </div>
-
-      <div className="relative flex place-items-center mt-20 mb-6">
-        <h1 className="text-4xl font-bold">Leaderboard</h1>
-      </div>
-
-      <div className="mb-10 w-full max-w-5xl px-4">
-        <div className="group rounded-lg border border-transparent px-5 py-4 bg-white shadow-md overflow-hidden">
-          {isLoading ? (
-            <div className="text-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 mx-auto"></div>
-              <p className="mt-2 text-gray-500">Loading leaderboard data...</p>
-            </div>
-          ) : error ? (
-            <div className="text-center py-12">
-              <p className="text-red-500">{error}</p>
-              <button
-                onClick={() => window.location.reload()}
-                className="mt-4 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700"
-              >
-                Try Again
-              </button>
-            </div>
-          ) : (
-            <>
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Rank
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Player
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Rating
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Win/Loss
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Win Rate
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {leaderboard?.rankings.map((entry, index) => {
-                    const rank = (currentPage - 1) * pageSize + index + 1;
-                    const winRate = entry.games_played > 0 
-                      ? ((entry.games_won / entry.games_played) * 100).toFixed(1) 
-                      : '0.0';
-                    
-                    return (
-                      <tr key={entry.id} className="group hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {rank}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <Link href={`/profile/${entry.id}`} className="text-sm font-medium text-indigo-600 hover:text-indigo-900">
-                            {entry.handle}
-                          </Link>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm font-semibold text-gray-900">{entry.rating}</span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {entry.games_won}/{entry.games_played - entry.games_won}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800">
-                            {winRate}%
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-
-              <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200">
-                <div className="flex-1 flex justify-between">
-                  <button
-                    onClick={handlePrevPage}
-                    disabled={currentPage === 1}
-                    className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium rounded-md transition-colors ${
-                      currentPage === 1 
-                        ? 'border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed' 
-                        : 'border-indigo-600 bg-white text-indigo-600 hover:bg-indigo-50'
-                    }`}
-                  >
-                    Previous
-                  </button>
-                  <div className="hidden md:flex items-center">
-                    <p className="text-sm text-gray-700">
-                      Showing <span className="font-medium">{(currentPage - 1) * pageSize + 1}</span> to{' '}
-                      <span className="font-medium">
-                        {Math.min(currentPage * pageSize, leaderboard?.total || 0)}
-                      </span>{' '}
-                      of <span className="font-medium">{leaderboard?.total}</span> players
-                    </p>
-                  </div>
-                  <button
-                    onClick={handleNextPage}
-                    disabled={isLastPage}
-                    className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium rounded-md transition-colors ${
-                      isLastPage
-                        ? 'border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed'
-                        : 'border-indigo-600 bg-white text-indigo-600 hover:bg-indigo-50'
-                    }`}
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-      
-      <div className="mt-4 mb-8">
-        <Link
-          href="/"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30 inline-block"
+    <ResponsiveContainer maxWidth="xl">
+      <div className="py-8">
+        {/* Header Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="text-center mb-12"
         >
-          <h2 className={`text-xl font-semibold`}>
-            Back to Home{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              →
-            </span>
-          </h2>
-        </Link>
+          <h1 className="text-4xl font-bold text-white mb-4">Leaderboard</h1>
+          <p className="text-lg text-gray-300 mb-8">Top {leaderboard.total_users} players</p>
+          
+          {/* Sort Options - Cleaner design */}
+          <div className="flex justify-center">
+            <div className="inline-flex bg-gray-800/50 backdrop-blur-sm rounded-lg p-1">
+              {sortOptions.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => {
+                    setSortBy(option.value);
+                    setPage(1);
+                  }}
+                  className={`px-6 py-2 rounded-md transition-all ${
+                    sortBy === option.value 
+                      ? 'bg-gray-700 text-white' 
+                      : 'text-gray-400 hover:text-gray-300'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Leaderboard List */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.1 }}
+          className="max-w-5xl mx-auto"
+        >
+          <div className="space-y-4">
+            {leaderboard.entries.map((entry, index) => {
+              const isTopThree = entry.rank <= 3;
+              const medal = getRankBadge(entry.rank);
+              
+              return (
+                <motion.div
+                  key={entry.user_id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.3, delay: index * 0.03 }}
+                >
+                  <Link href={`/profile?userId=${entry.user_id}`}>
+                    <div className={`
+                      bg-gray-800/30 backdrop-blur-sm border rounded-xl p-6
+                      hover:bg-gray-700/30 hover:border-gray-600/50 
+                      transition-all cursor-pointer
+                      ${isTopThree 
+                        ? medal === '🥇' ? 'border-yellow-600/50 bg-yellow-900/10' 
+                        : medal === '🥈' ? 'border-gray-400/50 bg-gray-700/20' 
+                        : 'border-orange-600/50 bg-orange-900/10'
+                        : 'border-gray-700/50'
+                      }
+                    `}>
+                      <div className="flex items-center justify-between gap-4">
+                        {/* Left side - Rank and User Info */}
+                        <div className="flex items-center gap-4 md:gap-6 min-w-0 flex-1">
+                          {/* Rank */}
+                          <div className="text-center flex-shrink-0 w-12 md:w-16">
+                            {medal ? (
+                              <div className="text-3xl md:text-4xl">{medal}</div>
+                            ) : (
+                              <div className="text-xl md:text-2xl font-bold text-gray-400">#{entry.rank}</div>
+                            )}
+                          </div>
+
+                          {/* Avatar and Name */}
+                          <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
+                            <div className="w-12 h-12 md:w-16 md:h-16 bg-gradient-to-br from-gray-700 to-gray-800 rounded-full flex items-center justify-center text-lg md:text-xl font-bold text-gray-200 shadow-lg flex-shrink-0">
+                              {entry.avatar_url ? (
+                                <img src={entry.avatar_url} alt={entry.handle} className="w-full h-full rounded-full object-cover" />
+                              ) : (
+                                entry.handle.charAt(0).toUpperCase()
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-lg md:text-xl font-semibold text-white truncate">{entry.handle}</div>
+                              <div className="text-xs md:text-sm text-gray-400 truncate">
+                                {entry.level === 7 ? 'Master' : 
+                                 entry.level >= 5 ? 'Expert' : 
+                                 entry.level >= 3 ? 'Advanced' : 
+                                 'Novice'} · Level {entry.level}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Right side - Only show the current sort metric */}
+                        <div className="flex items-center flex-shrink-0">
+                          <div className="text-center min-w-[80px] md:min-w-[100px]">
+                            <div className={`text-xl md:text-2xl font-bold ${sortOptions.find(o => o.value === sortBy)?.color}`}>
+                              {getSortValue(entry)}
+                            </div>
+                            <div className="text-xs md:text-sm text-gray-400">
+                              {sortOptions.find(o => o.value === sortBy)?.label}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                </motion.div>
+              );
+            })}
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex justify-center items-center gap-4 mt-12">
+              <ResponsiveButton
+                variant="ghost"
+                size="md"
+                onClick={() => setPage(Math.max(1, page - 1))}
+                disabled={page === 1}
+              >
+                ← Previous
+              </ResponsiveButton>
+              
+              <span className="text-gray-300 px-4">
+                Page {page} of {totalPages}
+              </span>
+              
+              <ResponsiveButton
+                variant="ghost"
+                size="md"
+                onClick={() => setPage(Math.min(totalPages, page + 1))}
+                disabled={page === totalPages}
+              >
+                Next →
+              </ResponsiveButton>
+            </div>
+          )}
+        </motion.div>
       </div>
-    </main>
+    </ResponsiveContainer>
   );
-} 
+}

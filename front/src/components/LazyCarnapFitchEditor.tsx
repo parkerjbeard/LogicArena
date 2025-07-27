@@ -10,7 +10,7 @@ const EditorSkeleton = () => (
         <div className="flex items-center gap-2">
           <InfoIcon className="w-4 h-4 text-blue-400" />
           <span className="text-sm font-medium text-gray-200">
-            Carnap-Compatible Fitch Notation
+            Enhanced Carnap-Compatible Fitch Notation
           </span>
         </div>
         <div className="h-4 w-24 bg-gray-700 rounded animate-pulse"></div>
@@ -18,16 +18,34 @@ const EditorSkeleton = () => (
     </div>
     
     <div className="border border-gray-700 rounded-b-lg overflow-hidden animate-pulse">
-      <div className="bg-gray-800 h-[400px]">
-        <div className="p-4 space-y-2">
-          <div className="h-4 bg-gray-700 rounded w-3/4"></div>
-          <div className="h-4 bg-gray-700 rounded w-1/2"></div>
-          <div className="h-4 bg-gray-700 rounded w-5/6"></div>
+      <div className="bg-gray-900 h-[400px] relative">
+        <div className="p-4 space-y-3">
+          {/* Simulate line numbers and syntax highlighting */}
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-4 bg-gray-600 rounded text-xs"></div>
+            <div className="h-4 bg-green-700 rounded w-20"></div>
+            <div className="h-4 bg-gray-600 rounded w-8"></div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-4 bg-gray-600 rounded text-xs"></div>
+            <div className="h-4 bg-green-700 rounded w-16"></div>
+            <div className="h-4 bg-gray-600 rounded w-8"></div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-4 bg-gray-600 rounded text-xs"></div>
+            <div className="h-4 bg-blue-700 rounded w-24"></div>
+          </div>
+          <div className="flex items-center gap-2 ml-4">
+            <div className="w-6 h-4 bg-gray-600 rounded text-xs"></div>
+            <div className="border-l border-gray-600 w-4 h-4"></div>
+            <div className="h-4 bg-gray-700 rounded w-12"></div>
+            <div className="h-4 bg-purple-700 rounded w-10"></div>
+          </div>
         </div>
       </div>
-      <div className="bg-gray-800 p-2 flex justify-between items-center">
-        <div className="h-4 w-48 bg-gray-700 rounded"></div>
-        <div className="h-8 w-28 bg-gray-700 rounded"></div>
+      <div className="bg-gray-800 p-2 flex justify-between items-center border-t border-gray-700">
+        <div className="h-4 w-64 bg-gray-700 rounded"></div>
+        <div className="h-8 w-32 bg-green-700 rounded"></div>
       </div>
     </div>
   </div>

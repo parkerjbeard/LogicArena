@@ -11,13 +11,16 @@ import {
   Puzzle, 
   Trophy,
   BookOpen,
-  User
+  User,
+  LogOut
 } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function ResponsiveNavigation() {
   const { isMobile, isTablet } = useBreakpoint();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
+  const { user, isAuthenticated, signOut } = useAuth();
 
   // Close menu when switching to desktop
   useEffect(() => {
@@ -70,6 +73,30 @@ export default function ResponsiveNavigation() {
                 {item.label}
               </Link>
             ))}
+            
+            {isAuthenticated ? (
+              <>
+                <Link 
+                  href="/profile"
+                  className="px-3 py-1.5 text-sm font-medium text-gray-300 hover:text-white bg-gray-800/50 rounded-md border border-gray-700 hover:bg-gray-700/50 transition-all"
+                >
+                  {user?.name || 'Profile'}
+                </Link>
+                <button
+                  onClick={() => signOut({ callbackUrl: '/' })}
+                  className="px-3 py-1.5 text-sm font-medium text-gray-300 hover:text-white bg-gray-800/50 rounded-md border border-gray-700 hover:bg-gray-700/50 transition-all"
+                >
+                  Logout
+                </button>
+              </>
+            ) : (
+              <Link 
+                href="/login"
+                className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-all"
+              >
+                Login
+              </Link>
+            )}
           </div>
         </div>
       </div>
@@ -142,6 +169,40 @@ export default function ResponsiveNavigation() {
                   </Link>
                 ))}
               </div>
+              
+              <div className="mt-6 pt-6 border-t border-gray-800">
+                {isAuthenticated ? (
+                  <>
+                    <Link
+                      href="/profile"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800/50 transition-colors"
+                    >
+                      <User className="h-5 w-5" />
+                      <span>{user?.name || 'Profile'}</span>
+                    </Link>
+                    <button
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        signOut();
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800/50 transition-colors"
+                    >
+                      <LogOut className="h-5 w-5" />
+                      <span>Logout</span>
+                    </button>
+                  </>
+                ) : (
+                  <Link
+                    href="/login"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-3 px-4 py-3 rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-colors mx-4"
+                  >
+                    <User className="h-5 w-5" />
+                    <span>Login</span>
+                  </Link>
+                )}
+              </div>
             </nav>
           </motion.div>
         </>
@@ -153,7 +214,7 @@ export default function ResponsiveNavigation() {
   const MobileTabBar = () => (
     <div className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-gray-900 border-t border-gray-800 pb-safe-bottom">
       <nav className="flex items-center justify-around">
-        {mainNavItems.slice(0, 4).map((item) => (
+        {mainNavItems.map((item) => (
           <Link
             key={item.href}
             href={item.href}

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import api from '@/lib/api';
+import { userAPI } from '@/lib/api';
 
 // Type definitions for our data
 interface UserProfile {
@@ -52,16 +52,16 @@ export default function ProfilePage({ params }: { params: { userId: string } }) 
       
       try {
         // Fetch user profile
-        const profileResponse = await api.get(`/users/profile/${userId}`);
-        setProfile(profileResponse.data);
+        const profileData = await userAPI.getUserProfile(parseInt(userId));
+        setProfile(profileData);
         
         // Fetch user stats
-        const statsResponse = await api.get(`/users/stats/${userId}`);
-        setStats(statsResponse.data);
+        const statsData = await userAPI.getUserStats(parseInt(userId));
+        setStats(statsData);
         
-        // Fetch user submissions
-        const submissionsResponse = await api.get(`/users/submissions/${userId}?limit=5`);
-        setSubmissions(submissionsResponse.data);
+        // For now, submissions endpoint doesn't exist in userAPI, so we'll skip it
+        // const submissionsResponse = await api.get(`/users/submissions/${userId}?limit=5`);
+        // setSubmissions(submissionsResponse.data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
       } finally {
