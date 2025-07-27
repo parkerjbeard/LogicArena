@@ -24,6 +24,13 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - DEBUG=true
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - VERIFICATION_CACHE_ENABLED=true
+      - VERIFICATION_CACHE_TTL=3600
+      - VERIFICATION_MAX_WORKERS=10
+      - VERIFICATION_BATCH_SIZE=20
+      - VERIFICATION_INTERVAL=300
+      - VERIFY_PUZZLES_ON_SEED=${VERIFY_PUZZLES_ON_SEED:-true}
+      - CONTINUOUS_VERIFICATION_ENABLED=${CONTINUOUS_VERIFICATION_ENABLED:-true}
     volumes:
       - ./shared:/app/shared:ro
     restart: always

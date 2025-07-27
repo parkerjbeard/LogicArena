@@ -20,10 +20,24 @@ export const puzzleAPI = {
     return response.data;
   },
   
-  submitProof: async (puzzleId: number, proof: string, hintsUsed: number = 0) => {
+  submitProof: async (puzzleId: number, proof: string, hintsUsed: number = 0, userId?: number | string) => {
+    // Handle both numeric IDs and Supabase UUIDs
+    let actualUserId = 1; // Default anonymous
+    
+    if (userId) {
+      // If it's a UUID (Supabase), we'll need to get the numeric ID from backend
+      if (typeof userId === 'string' && userId.includes('-')) {
+        // This is a Supabase UUID, backend will handle mapping
+        actualUserId = userId as any;
+      } else {
+        actualUserId = Number(userId);
+      }
+    }
+    
     const response = await api.post(`/api/puzzles/submit`, { 
       puzzle_id: puzzleId,
       payload: proof,
+      user_id: actualUserId,
       hints_used: hintsUsed 
     });
     return response.data;
@@ -40,14 +54,75 @@ export const puzzleAPI = {
   getPuzzleStats: async () => {
     const response = await api.get('/api/puzzles/stats');
     return response.data;
+  },
+
+  // New methods for category-based puzzles
+  getCategories: async () => {
+    const response = await api.get('/api/puzzles/categories');
+    return response.data;
+  },
+
+  filterPuzzles: async (params: {
+    category?: string;
+    chapter?: number;
+    difficulty_min?: number;
+    difficulty_max?: number;
+    nested_depth_min?: number;
+    rules_required?: string[];
+  }, page: number = 1, size: number = 10) => {
+    const response = await api.post('/api/puzzles/filter', params, {
+      params: { page, size }
+    });
+    return response.data;
+  },
+
+  generatePuzzle: async (category: string, difficulty?: number) => {
+    const url = difficulty 
+      ? `/api/puzzles/generate/${category}?difficulty=${difficulty}` 
+      : `/api/puzzles/generate/${category}`;
+    const response = await api.post(url);
+    return response.data;
+  },
+
+  getRandomPuzzleByCategory: async (category: string, difficulty?: number) => {
+    // First filter puzzles by category
+    const filterParams = {
+      category,
+      ...(difficulty && { difficulty_min: difficulty, difficulty_max: difficulty })
+    };
+    
+    const filterResult = await api.post('/api/puzzles/filter', filterParams, {
+      params: { page: 1, size: 100 }
+    });
+    
+    const puzzles = filterResult.data.puzzles;
+    if (puzzles.length === 0) {
+      // If no puzzles exist, generate one
+      return await api.post(`/api/puzzles/generate/${category}`, null, {
+        params: difficulty ? { difficulty } : {}
+      }).then(res => res.data);
+    }
+    
+    // Return a random puzzle from the results
+    const randomIndex = Math.floor(Math.random() * puzzles.length);
+    return puzzles[randomIndex];
   }
 };
 
 // User API (simplified for public access)
 export const userAPI = {
-  getLeaderboard: async (limit = 10, offset = 0) => {
+  createOrUpdateProfile: async (data: { supabase_id: string; email: string; handle: string }) => {
+    const response = await api.post('/api/users/supabase-profile', data);
+    return response.data;
+  },
+  
+  getProfileBySupabaseId: async (supabaseId: string) => {
+    const response = await api.get(`/api/users/supabase-profile/${supabaseId}`);
+    return response.data;
+  },
+  getLeaderboard: async (limit = 10, offset = 0, sortBy = 'experience_points') => {
     const response = await api.get('/api/users/leaderboard', {
-      params: { limit, offset }
+      params: { limit, offset, sort_by: sortBy }
     });
     return response.data;
   },
