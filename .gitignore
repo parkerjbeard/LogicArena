@@ -393,6 +393,9 @@ kustomization.yaml.bak
 # Claude documentation folder
 claude_docs/
 
+# Development documentation
+docs/
+
 # Markdown documentation files (temporary/generated)
 *.md
 !README.md
