@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, validator
+from pydantic import BaseModel, EmailStr, validator, Field
 from typing import Optional, List
 import datetime
 
@@ -49,4 +49,32 @@ class LeaderboardResponse(BaseModel):
     rankings: List[LeaderboardEntry]
     total: int
     page: int
-    size: int 
+    size: int
+
+class UserRegister(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=6)
+    handle: Optional[str] = None
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+class UserLoginResponse(BaseModel):
+    user: dict
+    message: str
+
+class SupabaseProfileCreate(BaseModel):
+    supabase_id: str
+    email: EmailStr
+    handle: str
+
+class SupabaseProfileResponse(BaseModel):
+    id: int
+    handle: str
+    email: EmailStr
+    supabase_id: str
+    created: datetime.datetime
+    
+    class Config:
+        from_attributes = True 

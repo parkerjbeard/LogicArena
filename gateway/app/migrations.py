@@ -3,12 +3,16 @@ import sys
 import importlib.util
 from datetime import datetime
 from typing import List, Tuple
-from sqlalchemy import text
+from sqlalchemy import text, create_engine
 from sqlalchemy.orm import Session
-from app.db.session import engine
-from app.config import get_settings
+from app.config import settings
 
-settings = get_settings()
+# Create sync engine for migrations
+database_url = settings.DATABASE_URL
+if database_url.startswith("postgresql+asyncpg://"):
+    database_url = database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    
+engine = create_engine(database_url)
 
 class Migration:
     """Base class for database migrations"""
@@ -69,7 +73,15 @@ class MigrationRunner:
         """Load a migration from a file"""
         spec = importlib.util.spec_from_file_location("migration", filepath)
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        
+        # Add the current directory to sys.path to resolve imports
+        import sys
+        sys.path.insert(0, os.path.dirname(os.path.dirname(filepath)))
+        
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            sys.path.pop(0)
         
         # Find the Migration subclass in the module
         for name in dir(module):

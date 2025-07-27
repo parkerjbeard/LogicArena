@@ -15,6 +15,8 @@ import asyncio
 from app.users.router import router as users_router
 from app.puzzles.router import router as puzzles_router
 from app.games.router import router as games_router
+# from app.tutorials.router import router as tutorials_router  # TODO: Add tutorials module
+# from app.admin.verification_router import router as verification_admin_router  # TODO: Add admin module
 from app.config import settings
 from app.db.session import engine, get_db, pool_monitor, close_db_connections, verify_db_connection
 from app.db.health import db_health_checker
@@ -22,6 +24,7 @@ from app.db.pool_optimizer import pool_optimizer
 from app.models import Base
 from app.websocket.manager import ConnectionManager
 from app.middleware.logging_middleware import LoggingMiddleware
+# from app.background import start_continuous_verification, stop_continuous_verification  # TODO: Add background module
 
 # Configure logging - simplified for demo
 logging.basicConfig(
@@ -111,6 +114,16 @@ app.include_router(
     prefix="/api/games", 
     tags=["Games"]
 )
+# app.include_router(
+#     tutorials_router,
+#     prefix="/api/tutorials",
+#     tags=["Tutorials"]
+# )
+# app.include_router(
+#     verification_admin_router,
+#     prefix="/api/admin",
+#     tags=["Admin", "Verification"]
+# )
 
 @app.on_event("startup")
 async def startup():
@@ -152,6 +165,11 @@ async def startup():
     global game_event_processor_task
     game_event_processor_task = asyncio.create_task(process_game_events())
     
+    # Start continuous puzzle verification if enabled
+    if getattr(settings, "CONTINUOUS_VERIFICATION_ENABLED", True):
+        # await start_continuous_verification()  # TODO: Add background module
+        logger.info("Continuous puzzle verification started")
+    
     logger.info("Application startup complete")
 
 @app.on_event("shutdown")
@@ -164,6 +182,9 @@ async def shutdown():
             await game_event_processor_task
         except asyncio.CancelledError:
             pass
+    
+    # Stop continuous verification
+    # await stop_continuous_verification()  # TODO: Add background module
     
     # Stop connection pool monitoring
     await pool_monitor.stop_monitoring()

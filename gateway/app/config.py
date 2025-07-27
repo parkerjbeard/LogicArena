@@ -40,9 +40,19 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
     API_URL: str = os.getenv("API_URL", "http://localhost:8000")
     
+    # Puzzle Verification
+    VERIFICATION_CACHE_ENABLED: bool = os.getenv("VERIFICATION_CACHE_ENABLED", "True").lower() == "true"
+    VERIFICATION_CACHE_TTL: int = int(os.getenv("VERIFICATION_CACHE_TTL", "3600"))  # 1 hour
+    VERIFICATION_MAX_WORKERS: int = int(os.getenv("VERIFICATION_MAX_WORKERS", "10"))
+    VERIFICATION_BATCH_SIZE: int = int(os.getenv("VERIFICATION_BATCH_SIZE", "20"))
+    VERIFICATION_INTERVAL: int = int(os.getenv("VERIFICATION_INTERVAL", "300"))  # 5 minutes
+    VERIFY_PUZZLES_ON_SEED: bool = os.getenv("VERIFY_PUZZLES_ON_SEED", "True").lower() == "true"
+    CONTINUOUS_VERIFICATION_ENABLED: bool = os.getenv("CONTINUOUS_VERIFICATION_ENABLED", "True").lower() == "true"
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
+        extra = "ignore"  # Ignore extra fields from .env
 
 settings = Settings()
