@@ -1,329 +1,309 @@
-import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import LeaderboardPage from '../page';
 import api from '@/lib/api';
 
-// Mock the API
-jest.mock('@/lib/api', () => ({
+// Mock dependencies
+jest.mock('@/lib/api');
+
+jest.mock('next/link', () => ({
   __esModule: true,
-  default: {
-    get: jest.fn(),
+  default: ({ children, href }: any) => <a href={href}>{children}</a>,
+}));
+
+jest.mock('@/hooks/useResponsive', () => ({
+  useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true }),
+}));
+
+// Mock framer-motion
+jest.mock('framer-motion', () => ({
+  motion: {
+    div: ({ children, ...props }: any) => <div {...props}>{children}</div>,
   },
+  AnimatePresence: ({ children }: any) => <>{children}</>,
 }));
 
-// Mock Next.js router
-jest.mock('next/navigation', () => ({
-  useRouter: () => ({
-    push: jest.fn(),
-  }),
+// Mock UI components
+jest.mock('@/components/ui', () => ({
+  ResponsiveContainer: ({ children }: any) => <div>{children}</div>,
+  ResponsiveStack: ({ children }: any) => <div>{children}</div>,
+  ResponsiveCard: ({ children }: any) => <div>{children}</div>,
+  CardHeader: ({ title, subtitle }: any) => (
+    <div>
+      <h2>{title}</h2>
+      {subtitle && <p>{subtitle}</p>}
+    </div>
+  ),
+  CardContent: ({ children }: any) => <div>{children}</div>,
+  ResponsiveButton: ({ children, onClick, disabled }: any) => (
+    <button onClick={onClick} disabled={disabled}>
+      {children}
+    </button>
+  ),
 }));
 
-const mockLeaderboardData = {
-  rankings: [
+const mockLeaderboard = {
+  entries: [
     {
-      id: 1,
-      handle: 'player1',
-      rating: 1500,
-      games_won: 15,
-      games_played: 20,
+      rank: 1,
+      user_id: 1,
+      handle: 'champion',
+      avatar_url: null,
+      level: 10,
+      experience_points: 5000,
+      rating: 2000,
+      puzzles_solved: 150,
+      games_won: 80,
+      win_rate: 75.5,
+      streak_days: 30,
     },
     {
-      id: 2,
-      handle: 'player2',
-      rating: 1450,
-      games_won: 12,
-      games_played: 18,
+      rank: 2,
+      user_id: 2,
+      handle: 'challenger',
+      avatar_url: 'https://example.com/avatar2.jpg',
+      level: 8,
+      experience_points: 4000,
+      rating: 1800,
+      puzzles_solved: 120,
+      games_won: 60,
+      win_rate: 65.0,
+      streak_days: 20,
     },
     {
-      id: 3,
-      handle: 'player3',
-      rating: 1400,
-      games_won: 10,
-      games_played: 15,
+      rank: 3,
+      user_id: 3,
+      handle: 'expert',
+      avatar_url: null,
+      level: 6,
+      experience_points: 3000,
+      rating: 1600,
+      puzzles_solved: 90,
+      games_won: 40,
+      win_rate: 55.0,
+      streak_days: 15,
     },
   ],
-  total: 3,
+  total_users: 100,
   page: 1,
-  size: 10,
+  per_page: 50,
+  sort_by: 'experience_points',
 };
 
-describe('Leaderboard Page', () => {
-  const user = userEvent.setup();
-
+describe('LeaderboardPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (api.get as jest.Mock).mockResolvedValue({ data: mockLeaderboardData });
   });
 
-  it('renders the page title', async () => {
+  it('renders loading state initially', () => {
+    (api.get as jest.Mock).mockImplementation(() => new Promise(() => {}));
+    
     render(<LeaderboardPage />);
     
-    expect(screen.getByText('Leaderboard')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Leaderboard' })).toBeInTheDocument();
+    expect(screen.getByText('Loading leaderboard...')).toBeInTheDocument();
   });
 
-  it('displays loading state initially', () => {
-    render(<LeaderboardPage />);
+  it('renders leaderboard data when loaded', async () => {
+    (api.get as jest.Mock).mockResolvedValue({ data: mockLeaderboard });
     
-    expect(screen.getByText('Loading leaderboard data...')).toBeInTheDocument();
-    expect(screen.getByRole('progressbar', { hidden: true })).toBeInTheDocument();
-  });
-
-  it('fetches and displays leaderboard data', async () => {
     render(<LeaderboardPage />);
     
     await waitFor(() => {
-      expect(api.get).toHaveBeenCalledWith('/users/leaderboard?page=1&size=10');
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText('player1')).toBeInTheDocument();
-      expect(screen.getByText('player2')).toBeInTheDocument();
-      expect(screen.getByText('player3')).toBeInTheDocument();
+      expect(screen.getByText('Leaderboard')).toBeInTheDocument();
+      expect(screen.getByText('Top 100 players')).toBeInTheDocument();
+      expect(screen.getByText('champion')).toBeInTheDocument();
+      expect(screen.getByText('challenger')).toBeInTheDocument();
+      expect(screen.getByText('expert')).toBeInTheDocument();
     });
   });
 
-  it('displays player rankings correctly', async () => {
+  it('displays rank badges for top 3', async () => {
+    (api.get as jest.Mock).mockResolvedValue({ data: mockLeaderboard });
+    
     render(<LeaderboardPage />);
     
     await waitFor(() => {
-      expect(screen.getByText('1')).toBeInTheDocument(); // Rank 1
-      expect(screen.getByText('2')).toBeInTheDocument(); // Rank 2
-      expect(screen.getByText('3')).toBeInTheDocument(); // Rank 3
+      expect(screen.getByText('🥇')).toBeInTheDocument();
+      expect(screen.getByText('🥈')).toBeInTheDocument();
+      expect(screen.getByText('🥉')).toBeInTheDocument();
     });
   });
 
-  it('displays player ratings', async () => {
+  it('renders sort buttons', async () => {
+    (api.get as jest.Mock).mockResolvedValue({ data: mockLeaderboard });
+    
     render(<LeaderboardPage />);
     
     await waitFor(() => {
-      expect(screen.getByText('1500')).toBeInTheDocument();
-      expect(screen.getByText('1450')).toBeInTheDocument();
-      expect(screen.getByText('1400')).toBeInTheDocument();
-    });
-  });
-
-  it('displays win/loss records', async () => {
-    render(<LeaderboardPage />);
-    
-    await waitFor(() => {
-      expect(screen.getByText('15/5')).toBeInTheDocument(); // 15 wins, 5 losses
-      expect(screen.getByText('12/6')).toBeInTheDocument(); // 12 wins, 6 losses
-      expect(screen.getByText('10/5')).toBeInTheDocument(); // 10 wins, 5 losses
-    });
-  });
-
-  it('calculates and displays win rates correctly', async () => {
-    render(<LeaderboardPage />);
-    
-    await waitFor(() => {
-      expect(screen.getByText('75.0%')).toBeInTheDocument(); // 15/20 = 75%
-      expect(screen.getByText('66.7%')).toBeInTheDocument(); // 12/18 = 66.7%
-      expect(screen.getByText('66.7%')).toBeInTheDocument(); // 10/15 = 66.7%
-    });
-  });
-
-  it('renders table headers correctly', async () => {
-    render(<LeaderboardPage />);
-    
-    await waitFor(() => {
-      expect(screen.getByText('Rank')).toBeInTheDocument();
-      expect(screen.getByText('Player')).toBeInTheDocument();
+      expect(screen.getByText('Experience')).toBeInTheDocument();
       expect(screen.getByText('Rating')).toBeInTheDocument();
-      expect(screen.getByText('Win/Loss')).toBeInTheDocument();
-      expect(screen.getByText('Win Rate')).toBeInTheDocument();
+      expect(screen.getByText('Puzzles Solved')).toBeInTheDocument();
+      expect(screen.getByText('Streak')).toBeInTheDocument();
     });
   });
 
-  it('renders player profile links', async () => {
+  it('changes sort order when button clicked', async () => {
+    (api.get as jest.Mock).mockResolvedValue({ data: mockLeaderboard });
+    
     render(<LeaderboardPage />);
     
     await waitFor(() => {
-      const player1Link = screen.getByText('player1').closest('a');
-      expect(player1Link).toHaveAttribute('href', '/profile/1');
-      
-      const player2Link = screen.getByText('player2').closest('a');
-      expect(player2Link).toHaveAttribute('href', '/profile/2');
+      expect(screen.getByText('Rating')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Rating'));
+    
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith('/users/leaderboard', {
+        params: {
+          sort_by: 'rating',
+          page: 1,
+          per_page: 50,
+        },
+      });
     });
   });
 
-  it('handles pagination correctly', async () => {
+  it('displays correct values based on sort', async () => {
+    (api.get as jest.Mock).mockResolvedValue({ data: mockLeaderboard });
+    
     render(<LeaderboardPage />);
     
     await waitFor(() => {
-      expect(screen.getByText('Previous')).toBeInTheDocument();
-      expect(screen.getByText('Next')).toBeInTheDocument();
+      // Should show experience points when sorted by XP
+      expect(screen.getByText('5,000')).toBeInTheDocument();
+      expect(screen.getByText('4,000')).toBeInTheDocument();
+      expect(screen.getByText('3,000')).toBeInTheDocument();
     });
-
-    // Previous button should be disabled on first page
-    const prevButton = screen.getByText('Previous');
-    expect(prevButton).toBeDisabled();
   });
 
-  it('handles next page navigation', async () => {
-    // Mock multi-page data
+  it('renders pagination controls', async () => {
     const multiPageData = {
-      ...mockLeaderboardData,
-      total: 25, // More than 10 entries
+      ...mockLeaderboard,
+      total_users: 150,
+      per_page: 50,
     };
     (api.get as jest.Mock).mockResolvedValue({ data: multiPageData });
+    
+    render(<LeaderboardPage />);
+    
+    await waitFor(() => {
+      expect(screen.getByText('Page 1 of 3')).toBeInTheDocument();
+      expect(screen.getByText('Previous')).toBeInTheDocument();
+      expect(screen.getByText('Next')).toBeInTheDocument();
+    });
+  });
 
+  it('handles pagination navigation', async () => {
+    const multiPageData = {
+      ...mockLeaderboard,
+      total_users: 150,
+      per_page: 50,
+    };
+    (api.get as jest.Mock).mockResolvedValue({ data: multiPageData });
+    
     render(<LeaderboardPage />);
     
     await waitFor(() => {
       expect(screen.getByText('Next')).toBeInTheDocument();
     });
 
-    const nextButton = screen.getByText('Next');
-    expect(nextButton).not.toBeDisabled();
-
-    await user.click(nextButton);
-
-    expect(api.get).toHaveBeenCalledWith('/users/leaderboard?page=2&size=10');
-  });
-
-  it('handles previous page navigation', async () => {
-    // Mock second page data
-    const secondPageData = {
-      ...mockLeaderboardData,
-      page: 2,
-      total: 25,
-    };
-    (api.get as jest.Mock).mockResolvedValue({ data: secondPageData });
-
-    render(<LeaderboardPage />);
-    
-    // Wait for initial load
-    await waitFor(() => {
-      expect(screen.getByText('Previous')).toBeInTheDocument();
-    });
-
-    // Simulate being on page 2
-    const prevButton = screen.getByText('Previous');
-    await user.click(prevButton);
-
-    expect(api.get).toHaveBeenCalledWith('/users/leaderboard?page=1&size=10');
-  });
-
-  it('displays pagination info correctly', async () => {
-    render(<LeaderboardPage />);
+    fireEvent.click(screen.getByText('Next'));
     
     await waitFor(() => {
-      expect(screen.getByText(/Showing 1 to 3 of 3 players/)).toBeInTheDocument();
-    });
-  });
-
-  it('handles API errors gracefully', async () => {
-    (api.get as jest.Mock).mockRejectedValue(new Error('API Error'));
-    
-    render(<LeaderboardPage />);
-    
-    await waitFor(() => {
-      expect(screen.getByText('API Error')).toBeInTheDocument();
-      expect(screen.getByText('Try Again')).toBeInTheDocument();
-    });
-  });
-
-  it('allows retry after error', async () => {
-    (api.get as jest.Mock).mockRejectedValue(new Error('API Error'));
-    
-    render(<LeaderboardPage />);
-    
-    await waitFor(() => {
-      expect(screen.getByText('Try Again')).toBeInTheDocument();
-    });
-
-    const retryButton = screen.getByText('Try Again');
-    await user.click(retryButton);
-
-    // Should reload the page
-    expect(retryButton).toBeInTheDocument();
-  });
-
-  it('renders home navigation link', () => {
-    render(<LeaderboardPage />);
-    
-    const homeLink = screen.getByText('LogicArena-α');
-    expect(homeLink).toBeInTheDocument();
-    
-    const backToHome = screen.getByText('Back to Home');
-    expect(backToHome.closest('a')).toHaveAttribute('href', '/');
-  });
-
-  it('handles empty leaderboard data', async () => {
-    (api.get as jest.Mock).mockResolvedValue({ 
-      data: { rankings: [], total: 0, page: 1, size: 10 } 
-    });
-    
-    render(<LeaderboardPage />);
-    
-    await waitFor(() => {
-      expect(screen.getByText('Rank')).toBeInTheDocument();
-      expect(screen.getByText('Player')).toBeInTheDocument();
-    });
-
-    // Should show empty table
-    expect(screen.queryByText('player1')).not.toBeInTheDocument();
-  });
-
-  it('handles player with no games played', async () => {
-    const dataWithNoGames = {
-      rankings: [
-        {
-          id: 1,
-          handle: 'newplayer',
-          rating: 1200,
-          games_won: 0,
-          games_played: 0,
+      expect(api.get).toHaveBeenLastCalledWith('/users/leaderboard', {
+        params: {
+          sort_by: 'experience_points',
+          page: 2,
+          per_page: 50,
         },
-      ],
-      total: 1,
-      page: 1,
-      size: 10,
-    };
-    (api.get as jest.Mock).mockResolvedValue({ data: dataWithNoGames });
-    
-    render(<LeaderboardPage />);
-    
-    await waitFor(() => {
-      expect(screen.getByText('newplayer')).toBeInTheDocument();
-      expect(screen.getByText('0/0')).toBeInTheDocument();
-      expect(screen.getByText('0.0%')).toBeInTheDocument();
+      });
     });
   });
 
-  it('applies correct styling to table elements', async () => {
+  it('disables pagination buttons appropriately', async () => {
+    (api.get as jest.Mock).mockResolvedValue({ data: mockLeaderboard });
+    
     render(<LeaderboardPage />);
     
     await waitFor(() => {
-      const table = screen.getByRole('table');
-      expect(table).toHaveClass('min-w-full', 'divide-y', 'divide-gray-200');
+      const prevButton = screen.getByText('Previous');
+      const nextButton = screen.getByText('Next');
+      
+      expect(prevButton).toBeDisabled(); // On first page
+      expect(nextButton).not.toBeDisabled(); // More pages available
     });
   });
 
-  it('renders hover effects on table rows', async () => {
+  it('creates profile links correctly', async () => {
+    (api.get as jest.Mock).mockResolvedValue({ data: mockLeaderboard });
+    
     render(<LeaderboardPage />);
     
     await waitFor(() => {
-      const rows = screen.getAllByRole('row');
-      // Skip header row
-      expect(rows[1]).toHaveClass('hover:bg-gray-50', 'transition-colors');
+      const links = screen.getAllByRole('link');
+      expect(links[0]).toHaveAttribute('href', '/profile?userId=1');
+      expect(links[1]).toHaveAttribute('href', '/profile?userId=2');
+      expect(links[2]).toHaveAttribute('href', '/profile?userId=3');
     });
   });
 
-  it('displays correct page count in pagination', async () => {
-    // Mock data with 25 total entries (3 pages)
-    const paginatedData = {
-      ...mockLeaderboardData,
-      total: 25,
-    };
-    (api.get as jest.Mock).mockResolvedValue({ data: paginatedData });
+  it('displays user avatars and initials', async () => {
+    (api.get as jest.Mock).mockResolvedValue({ data: mockLeaderboard });
     
     render(<LeaderboardPage />);
     
     await waitFor(() => {
-      expect(screen.getByText(/Showing 1 to 3 of 25 players/)).toBeInTheDocument();
+      expect(screen.getByText('C')).toBeInTheDocument(); // champion initial
+      expect(screen.getByAltText('challenger')).toBeInTheDocument(); // avatar image
+      expect(screen.getByText('E')).toBeInTheDocument(); // expert initial
+    });
+  });
+
+  it('handles error state', async () => {
+    (api.get as jest.Mock).mockRejectedValue(new Error('Network error'));
+    
+    render(<LeaderboardPage />);
+    
+    await waitFor(() => {
+      expect(screen.getByText('Failed to load leaderboard')).toBeInTheDocument();
+    });
+  });
+
+  it('shows win rate and games won', async () => {
+    (api.get as jest.Mock).mockResolvedValue({ data: mockLeaderboard });
+    
+    render(<LeaderboardPage />);
+    
+    await waitFor(() => {
+      expect(screen.getByText('75.5%')).toBeInTheDocument();
+      expect(screen.getByText('80')).toBeInTheDocument();
+      expect(screen.getByText('65.0%')).toBeInTheDocument();
+      expect(screen.getByText('60')).toBeInTheDocument();
+    });
+  });
+
+  it('resets page when changing sort', async () => {
+    // Start on page 2
+    const page2Data = { ...mockLeaderboard, page: 2 };
+    (api.get as jest.Mock).mockResolvedValue({ data: page2Data });
+    
+    const { rerender } = render(<LeaderboardPage />);
+    
+    await waitFor(() => {
+      expect(screen.getByText('Puzzles Solved')).toBeInTheDocument();
+    });
+
+    // Change sort - should reset to page 1
+    fireEvent.click(screen.getByText('Puzzles Solved'));
+    
+    await waitFor(() => {
+      expect(api.get).toHaveBeenLastCalledWith('/users/leaderboard', {
+        params: {
+          sort_by: 'puzzles_solved',
+          page: 1, // Reset to page 1
+          per_page: 50,
+        },
+      });
     });
   });
 });

@@ -1,10 +1,13 @@
 import pytest
+import pytest_asyncio
 import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import StaticPool
 from unittest.mock import AsyncMock, MagicMock
 
 from app.models import Base
+from httpx import AsyncClient
+from fastapi import FastAPI
 
 # Test database URL (in-memory SQLite)
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
@@ -19,7 +22,7 @@ def event_loop():
     loop.close()
 
 
-@pytest.fixture(scope="function")
+@pytest_asyncio.fixture(scope="function")
 async def test_engine():
     """Create a test database engine."""
     engine = create_async_engine(
@@ -38,7 +41,7 @@ async def test_engine():
     await engine.dispose()
 
 
-@pytest.fixture(scope="function")
+@pytest_asyncio.fixture(scope="function")
 async def test_db(test_engine):
     """Create a test database session."""
     async with AsyncSession(test_engine) as session:
@@ -87,3 +90,27 @@ def mock_websocket():
     ws.receive_text = AsyncMock()
     ws.close = AsyncMock()
     return ws
+
+
+@pytest_asyncio.fixture
+async def test_client(test_db):
+    """Create a test client with mocked dependencies."""
+    from main import app
+    
+    # Override database dependency
+    async def override_get_session():
+        yield test_db
+    
+    # Import get_db from where it's actually defined
+    from app.db.session import get_db
+    app.dependency_overrides[get_db] = override_get_session
+    
+    # Mock Redis for WebSocket manager
+    from app.websocket.manager import ConnectionManager
+    # Skip WebSocket manager mocking for now since it's not used in these tests
+    
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        yield client
+    
+    # Clean up
+    app.dependency_overrides.clear()
