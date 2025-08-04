@@ -29,7 +29,7 @@ RUN mkdir -p /app/.next && \
 
 # Create startup script before switching to nextjs user
 RUN echo '#!/bin/sh' > /app/start.sh && \
-    echo 'bun run build && bun run start' >> /app/start.sh && \
+    echo 'bun run build && node .next/standalone/server.js' >> /app/start.sh && \
     chmod +x /app/start.sh && \
     chown nextjs:nodejs /app/start.sh
 
@@ -38,6 +38,7 @@ USER nextjs
 EXPOSE 3000
 
 ENV PORT 3000
+ENV HOSTNAME "0.0.0.0"
 
 # Use the startup script
 CMD ["/app/start.sh"]
