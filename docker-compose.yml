@@ -10,7 +10,7 @@ services:
       redis:
         condition: service_started
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql://logicuser:${POSTGRES_PASSWORD:-logicpass}@postgres:5432/logicarena}
+      - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET=${JWT_SECRET}
       - SECRET_KEY=${SECRET_KEY}
@@ -74,7 +74,7 @@ services:
       - redis
       - postgres
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql://logicuser:${POSTGRES_PASSWORD:-logicpass}@postgres:5432/logicarena}
+      - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379/0
       - LOGSTASH_HOST=logstash
       - SENTRY_DSN=${SENTRY_DSN:-}
@@ -100,7 +100,7 @@ services:
       - redis
       - proof-checker
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql://logicuser:${POSTGRES_PASSWORD:-logicpass}@postgres:5432/logicarena}
+      - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379/0
       - PROOF_CHECKER_URL=http://proof-checker:5003
       - LOGSTASH_HOST=logstash
@@ -154,7 +154,7 @@ services:
       - postgres
       - redis
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql://logicuser:${POSTGRES_PASSWORD:-logicpass}@postgres:5432/logicarena}
+      - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379/0
       - LOGSTASH_HOST=logstash
       - SENTRY_DSN=${SENTRY_DSN:-}
