@@ -82,7 +82,7 @@ function PracticePageContent() {
         setHintsUsed(0);
         setStartTime(new Date());
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching puzzle:', error);
       console.error('Error details:', error.response?.data || error.message);
       if (isMountedRef.current) {

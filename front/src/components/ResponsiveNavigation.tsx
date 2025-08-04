@@ -80,10 +80,10 @@ export default function ResponsiveNavigation() {
                   href="/profile"
                   className="px-3 py-1.5 text-sm font-medium text-gray-300 hover:text-white bg-gray-800/50 rounded-md border border-gray-700 hover:bg-gray-700/50 transition-all"
                 >
-                  {user?.name || 'Profile'}
+                  {user?.email?.split('@')[0] || 'Profile'}
                 </Link>
                 <button
-                  onClick={() => signOut({ callbackUrl: '/' })}
+                  onClick={() => signOut()}
                   className="px-3 py-1.5 text-sm font-medium text-gray-300 hover:text-white bg-gray-800/50 rounded-md border border-gray-700 hover:bg-gray-700/50 transition-all"
                 >
                   Logout
@@ -179,7 +179,7 @@ export default function ResponsiveNavigation() {
                       className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800/50 transition-colors"
                     >
                       <User className="h-5 w-5" />
-                      <span>{user?.name || 'Profile'}</span>
+                      <span>{user?.email?.split('@')[0] || 'Profile'}</span>
                     </Link>
                     <button
                       onClick={() => {
