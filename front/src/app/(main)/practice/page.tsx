@@ -45,7 +45,9 @@ function PracticePageContent() {
   // Fetch a random puzzle on mount or when difficulty changes
   useEffect(() => {
     isMountedRef.current = true; // Ensure mounted state is true when effect runs
-    if (!puzzle) { // Only fetch if we don't have a puzzle
+    
+    // Only run on client side
+    if (typeof window !== 'undefined' && !puzzle) { 
       fetchRandomPuzzle();
     }
     
