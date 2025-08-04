@@ -164,8 +164,8 @@ class RateLimiters:
     refresh = create_rate_limit_dependency(30, 3600, key_prefix="auth:refresh")
     
     # Puzzle endpoints
-    puzzle_submit = create_rate_limit_dependency(100, 3600, key_prefix="puzzle:submit")
-    puzzle_list = create_rate_limit_dependency(100, 60, key_prefix="puzzle:list")
+    puzzle_submit = create_rate_limit_dependency(1000, 60, key_prefix="puzzle:submit")  # Increased for development
+    puzzle_list = create_rate_limit_dependency(1000, 60, key_prefix="puzzle:list")  # Increased for development
     
     # Game endpoints
     join_queue = create_rate_limit_dependency(5, 60, key_prefix="game:queue")
