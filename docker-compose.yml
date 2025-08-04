@@ -20,9 +20,10 @@ services:
       - PROOF_CHECKER_URL=http://proof-checker:5003
       - LOGSTASH_HOST=logstash
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - ENVIRONMENT=${ENVIRONMENT:-development}
-      - DEBUG=true
+      - DEBUG=${DEBUG:-True}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - VERIFICATION_CACHE_ENABLED=true
       - VERIFICATION_CACHE_TTL=3600
