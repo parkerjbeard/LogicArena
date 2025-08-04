@@ -23,6 +23,10 @@ RUN adduser --system --uid 1001 nextjs
 COPY --chown=nextjs:nodejs . .
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/.next && \
+    chown -R nextjs:nodejs /app
+
 # Create startup script before switching to nextjs user
 RUN echo '#!/bin/sh' > /app/start.sh && \
     echo 'bun run build && bun run start' >> /app/start.sh && \
