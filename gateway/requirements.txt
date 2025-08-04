@@ -11,3 +11,4 @@ httpx
 python-dotenv
 asyncpg
 fastapi-limiter
+bcrypt
