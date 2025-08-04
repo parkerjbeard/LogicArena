@@ -23,15 +23,17 @@ RUN adduser --system --uid 1001 nextjs
 COPY --chown=nextjs:nodejs . .
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 
+# Create startup script before switching to nextjs user
+RUN echo '#!/bin/sh' > /app/start.sh && \
+    echo 'bun run build && bun run start' >> /app/start.sh && \
+    chmod +x /app/start.sh && \
+    chown nextjs:nodejs /app/start.sh
+
 USER nextjs
 
 EXPOSE 3000
 
 ENV PORT 3000
-
-# Create a startup script that builds and then runs the app
-RUN echo '#!/bin/sh\nbun run build && bun run start' > /app/start.sh && \
-    chmod +x /app/start.sh
 
 # Use the startup script
 CMD ["/app/start.sh"]
