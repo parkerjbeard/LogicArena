@@ -3,7 +3,7 @@ import type { UserStatistics, PuzzleSubmissionHistory, PuzzleHint } from '@/type
 
 // Create an Axios instance with default configuration
 const api = axios.create({
-  baseURL: 'http://localhost:8000',
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
   timeout: 10000,
 });
 
