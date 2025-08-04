@@ -25,8 +25,12 @@ interface UserProfile {
   games_won: number;
   win_rate: number;
   puzzles_solved: number;
+  puzzles_attempted: number;
   unique_puzzles_solved: number;
   total_practice_time: number;
+  seven_day_success_rate: number;
+  seven_day_attempts: number;
+  seven_day_solved: number;
   recent_puzzle_progress: PuzzleProgress[];
   completed_tutorials: string[];
   achievements: Achievement[];
@@ -171,7 +175,7 @@ export default function ProfilePage() {
               {/* Secondary stats */}
               <div className="flex flex-wrap justify-center gap-16">
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-green-400 mb-1">{profile.puzzles_solved}</div>
+                  <div className="text-3xl font-bold text-green-400 mb-1">{profile.unique_puzzles_solved}</div>
                   <div className="text-sm text-gray-400">Puzzles Solved</div>
                 </div>
                 <div className="text-center">
@@ -235,17 +239,25 @@ export default function ProfilePage() {
                     <div className="pt-4 border-t border-gray-700/50">
                       <div className="flex justify-between items-baseline">
                         <span className="text-sm text-gray-500">Total attempts</span>
-                        <span className="text-lg text-gray-300">{profile.puzzles_solved}</span>
+                        <span className="text-lg text-gray-300">{profile.puzzles_attempted}</span>
                       </div>
                       <div className="flex justify-between items-baseline mt-2">
-                        <span className="text-sm text-gray-500">Success rate</span>
+                        <span className="text-sm text-gray-500">7d success rate</span>
                         <span className="text-lg text-gray-300">
-                          {profile.puzzles_solved > 0 
-                            ? `${((profile.unique_puzzles_solved / profile.puzzles_solved) * 100).toFixed(1)}%`
-                            : '0%'
+                          {profile.seven_day_attempts > 0 
+                            ? `${profile.seven_day_success_rate.toFixed(1)}%`
+                            : 'No recent activity'
                           }
                         </span>
                       </div>
+                      {profile.seven_day_attempts > 0 && (
+                        <div className="flex justify-between items-baseline mt-1">
+                          <span className="text-xs text-gray-600">Last 7 days</span>
+                          <span className="text-sm text-gray-400">
+                            {profile.seven_day_solved}/{profile.seven_day_attempts}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </motion.div>

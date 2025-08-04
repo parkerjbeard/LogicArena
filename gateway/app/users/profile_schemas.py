@@ -121,8 +121,12 @@ class UserProfileResponse(BaseModel):
     
     # Practice stats
     puzzles_solved: int = 0
+    puzzles_attempted: int = 0  # Total puzzle attempts
     unique_puzzles_solved: int = 0
     total_practice_time: int = 0  # seconds
+    seven_day_success_rate: float = 0.0  # 7-day rolling success rate
+    seven_day_attempts: int = 0  # Attempts in last 7 days
+    seven_day_solved: int = 0  # Solved in last 7 days
     
     # Progress tracking
     recent_puzzle_progress: List[PuzzleProgressResponse] = Field(default_factory=list)

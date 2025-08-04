@@ -236,7 +236,13 @@ class ProgressTracker:
         if not stats:
             stats = UserDailyStats(
                 user_id=user_id,
-                date=today
+                date=today,
+                puzzles_attempted=0,
+                puzzles_solved=0,
+                practice_time_seconds=0,
+                experience_gained=0,
+                games_played=0,
+                games_won=0
             )
             db.add(stats)
         

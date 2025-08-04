@@ -7,6 +7,9 @@ from typing import List, Optional
 import json
 from datetime import datetime, date, timedelta
 import bcrypt
+import logging
+
+logger = logging.getLogger(__name__)
 
 from app.db.session import get_db
 from app.models import (
@@ -231,6 +234,15 @@ async def get_user_profile(
     )
     puzzles_solved = puzzles_solved_result.scalar() or 0
     
+    # Get total puzzle attempts (for success rate calculation)
+    total_attempts_result = await db.execute(
+        select(func.count(Submission.id)).where(
+            Submission.user_id == user_id,
+            Submission.puzzle_id.isnot(None)
+        )
+    )
+    total_attempts = total_attempts_result.scalar() or 0
+    
     unique_puzzles_result = await db.execute(
         select(func.count(func.distinct(Submission.puzzle_id))).where(
             Submission.user_id == user_id,
@@ -281,6 +293,26 @@ async def get_user_profile(
     
     win_rate = (games_won / total_games * 100) if total_games > 0 else 0
     
+    # Calculate 7-day success rate
+    seven_days_ago = date.today() - timedelta(days=7)
+    daily_stats_result = await db.execute(
+        select(
+            func.sum(UserDailyStats.puzzles_attempted).label('total_attempted'),
+            func.sum(UserDailyStats.puzzles_solved).label('total_solved')
+        ).where(
+            UserDailyStats.user_id == user_id,
+            UserDailyStats.date >= seven_days_ago
+        )
+    )
+    stats = daily_stats_result.first()
+    
+    seven_day_attempts = stats.total_attempted or 0
+    seven_day_solved = stats.total_solved or 0
+    seven_day_success_rate = (seven_day_solved / seven_day_attempts * 100) if seven_day_attempts > 0 else 0
+    
+    # For debugging, let's log the values
+    logger.info(f"User {user_id} 7-day stats: {seven_day_solved}/{seven_day_attempts} = {seven_day_success_rate}%")
+    
     return UserProfileResponse(
         id=user.id,
         handle=user.handle,
@@ -298,8 +330,12 @@ async def get_user_profile(
         games_won=games_won,
         win_rate=win_rate,
         puzzles_solved=puzzles_solved,
+        puzzles_attempted=total_attempts,
         unique_puzzles_solved=unique_puzzles_solved,
         total_practice_time=user.total_practice_time,
+        seven_day_success_rate=seven_day_success_rate,
+        seven_day_attempts=seven_day_attempts,
+        seven_day_solved=seven_day_solved,
         recent_puzzle_progress=recent_puzzle_progress,
         completed_tutorials=completed_tutorials,
         achievements=achievements
