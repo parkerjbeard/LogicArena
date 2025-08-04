@@ -27,24 +27,13 @@ COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 RUN mkdir -p /app/.next && \
     chown -R nextjs:nodejs /app
 
-# Accept build arguments for Supabase
-ARG NEXT_PUBLIC_SUPABASE_URL
-ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
-ARG NEXT_PUBLIC_API_URL
-ARG NEXT_PUBLIC_WS_URL
-
-# Set environment variables for build
-ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
-ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
-
-# Build the application
-RUN bun run build
-
 # Create startup script before switching to nextjs user
 RUN echo '#!/bin/sh' > /app/start.sh && \
-    echo 'node .next/standalone/server.js' >> /app/start.sh && \
+    echo 'if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ]; then' >> /app/start.sh && \
+    echo '  echo "Error: NEXT_PUBLIC_SUPABASE_URL is not set"' >> /app/start.sh && \
+    echo '  exit 1' >> /app/start.sh && \
+    echo 'fi' >> /app/start.sh && \
+    echo 'bun run build && exec bun run start' >> /app/start.sh && \
     chmod +x /app/start.sh && \
     chown nextjs:nodejs /app/start.sh
 
