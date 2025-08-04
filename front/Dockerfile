@@ -9,20 +9,7 @@ COPY package.json bun.lockb* ./
 # Use Bun's fast installer with frozen lockfile for consistency
 RUN bun install --frozen-lockfile
 
-# Rebuild the source code only when needed
-FROM base AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-
-# Next.js collects completely anonymous telemetry data about general usage.
-# Learn more here: https://nextjs.org/telemetry
-ENV NEXT_TELEMETRY_DISABLED 1
-
-# Use Bun to run the build
-RUN bun run build
-
-# Production image, copy all the files and run next
+# Production image
 FROM base AS runner
 WORKDIR /app
 
@@ -32,12 +19,9 @@ ENV NEXT_TELEMETRY_DISABLED 1
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-COPY --from=builder /app/public ./public
-
-# Automatically leverage output traces to reduce image size
-# https://nextjs.org/docs/advanced-features/output-file-tracing
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Copy application code
+COPY --chown=nextjs:nodejs . .
+COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 
 USER nextjs
 
@@ -45,5 +29,9 @@ EXPOSE 3000
 
 ENV PORT 3000
 
-# Use Bun runtime for better performance
-CMD ["bun", "run", "server.js"]
+# Create a startup script that builds and then runs the app
+RUN echo '#!/bin/sh\nbun run build && bun run start' > /app/start.sh && \
+    chmod +x /app/start.sh
+
+# Use the startup script
+CMD ["/app/start.sh"]
