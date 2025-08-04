@@ -17,7 +17,7 @@ def get_db_connection():
     """Create database connection"""
     return psycopg2.connect(DATABASE_URL)
 
-def create_puzzle(conn, gamma, phi, difficulty, best_len, machine_proof="", hint_text="", category="any", chapter=None):
+def create_puzzle(conn, gamma, phi, difficulty, best_len, machine_proof="", hint_text="", category="any", chapter=None, nested_depth=0):
     """Insert a puzzle into the database"""
     try:
         with conn.cursor() as cur:
@@ -25,9 +25,9 @@ def create_puzzle(conn, gamma, phi, difficulty, best_len, machine_proof="", hint
                 """
                 INSERT INTO puzzle (
                     gamma, phi, difficulty, best_len, machine_proof, 
-                    hint_text, created, verification_status, category, chapter
+                    hint_text, created, verification_status, category, chapter, nested_depth
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
@@ -39,7 +39,8 @@ def create_puzzle(conn, gamma, phi, difficulty, best_len, machine_proof="", hint
                     hint_text,
                     'unverified',  # We'll mark as unverified but functional
                     category,
-                    chapter
+                    chapter,
+                    nested_depth
                 )
             )
             
@@ -209,7 +210,8 @@ def seed_basic_puzzles():
             "machine_proof": "Show P→R\n    P    :AS\n    Q    :MP 1,2\n    R    :MP 2,3\n:CD 2-4",
             "hint_text": "Use conditional proof: assume P, derive R",
             "category": "chapter4",
-            "chapter": 4
+            "chapter": 4,
+            "nested_depth": 1
         },
         {
             "gamma": "P∧Q",
@@ -219,7 +221,8 @@ def seed_basic_puzzles():
             "machine_proof": "Show P→Q\n    P    :AS\n    Q    :∧E 1\n:CD 2-3",
             "hint_text": "Assume P, then extract Q from the conjunction",
             "category": "chapter4",
-            "chapter": 4
+            "chapter": 4,
+            "nested_depth": 1
         },
         {
             "gamma": "",
@@ -229,7 +232,8 @@ def seed_basic_puzzles():
             "machine_proof": "Show P→P\n    P    :AS\n    P    :R 2\n:CD 2-3",
             "hint_text": "Prove the law of identity using conditional proof",
             "category": "chapter4",
-            "chapter": 4
+            "chapter": 4,
+            "nested_depth": 1
         }
     ]
     
@@ -243,7 +247,8 @@ def seed_basic_puzzles():
             "machine_proof": "Show P→(Q→P)\n    P    :AS\n    Show Q→P\n        Q    :AS\n        P    :R 2\n    :CD 4-5\n:CD 2-6",
             "hint_text": "Nested conditional proof: assume P, then show Q→P",
             "category": "chapter5",
-            "chapter": 5
+            "chapter": 5,
+            "nested_depth": 2
         },
         {
             "gamma": "P→(Q→R)",
@@ -253,7 +258,8 @@ def seed_basic_puzzles():
             "machine_proof": "Show (P∧Q)→R\n    P∧Q    :AS\n    P    :∧E 2\n    Q    :∧E 2\n    Q→R    :MP 1,3\n    R    :MP 5,4\n:CD 2-6",
             "hint_text": "Export rule: transform nested conditional to conjunction",
             "category": "chapter5",
-            "chapter": 5
+            "chapter": 5,
+            "nested_depth": 1
         }
     ]
     
@@ -277,7 +283,8 @@ def seed_basic_puzzles():
             "machine_proof": "Show Q\n    ¬Q    :AS\n    P    :DS 1,2\n    ⊥    :⊥I 3,4\n:ID 2-4",
             "hint_text": "Use indirect proof: assume ¬Q and derive a contradiction",
             "category": "chapter6",
-            "chapter": 6
+            "chapter": 6,
+            "nested_depth": 1
         }
     ]
     
