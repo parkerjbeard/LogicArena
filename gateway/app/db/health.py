@@ -2,9 +2,8 @@
 import asyncio
 import logging
 from typing import Dict, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import engine, get_db_context, pool_monitor
 

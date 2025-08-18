@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from datetime import datetime
 import json
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 import redis.asyncio as redis
 from app.config import settings
 from app.models import Puzzle, PuzzleVerificationLog

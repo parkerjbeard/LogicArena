@@ -2,10 +2,8 @@
 Enhanced rate limiting middleware for LogicArena
 """
 from fastapi import Request, HTTPException, status
-from fastapi_limiter.depends import RateLimiter as FastAPIRateLimiter
 import redis.asyncio as redis
 from typing import Optional, Dict, Any
-import json
 import time
 import logging
 

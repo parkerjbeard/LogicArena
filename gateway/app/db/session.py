@@ -1,6 +1,5 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, AsyncEngine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import NullPool, QueuePool
 from typing import AsyncGenerator, Optional
 import logging
 import asyncio
@@ -115,27 +114,27 @@ class ConnectionPoolMonitor:
                 if hasattr(pool, 'size'):
                     try:
                         size = pool.size()
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"pool.size() unavailable: {e}")
                 
                 # Try to get checked out - different methods for different pool types
                 if hasattr(pool, 'checked_out'):
                     try:
                         checked_out = pool.checked_out()
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"pool.checked_out() unavailable: {e}")
                 elif hasattr(pool, 'checkedout'):
                     try:
                         checked_out = pool.checkedout()
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"pool.checkedout() unavailable: {e}")
                 
                 # Try to get overflow
                 if hasattr(pool, 'overflow'):
                     try:
                         overflow = pool.overflow
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"pool.overflow unavailable: {e}")
                 
                 return {
                     "size": size,
@@ -198,7 +197,7 @@ async def verify_db_connection() -> bool:
         logger.info("Attempting database connection...")
         from sqlalchemy import text
         async with engine.connect() as conn:
-            result = await conn.execute(text("SELECT 1"))
+            await conn.execute(text("SELECT 1"))
             logger.info("Database connection successful")
         return True
     except Exception as e:

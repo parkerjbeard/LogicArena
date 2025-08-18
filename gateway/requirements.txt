@@ -12,3 +12,15 @@ python-dotenv
 asyncpg
 fastapi-limiter
 bcrypt
+python-json-logger
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-httpx
+opentelemetry-instrumentation-sqlalchemy
+opentelemetry-instrumentation-redis
+opentelemetry-instrumentation-psycopg2
+opentelemetry-exporter-jaeger-thrift
+opentelemetry-exporter-otlp
+Deprecated
+sentry-sdk

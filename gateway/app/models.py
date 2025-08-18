@@ -1,5 +1,5 @@
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Text, DateTime, func, JSON, Date
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Text, DateTime, JSON, Date
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import ARRAY
 from datetime import datetime, timezone

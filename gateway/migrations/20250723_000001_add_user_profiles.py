@@ -5,7 +5,6 @@ Created: 2025-07-23
 """
 
 from sqlalchemy import text
-from sqlalchemy.orm import Session
 from app.migrations import Migration
 
 

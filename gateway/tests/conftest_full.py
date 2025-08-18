@@ -1,6 +1,5 @@
 import pytest
 import asyncio
-import redis.asyncio as redis
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import StaticPool
@@ -15,8 +14,6 @@ from main import app
 from app.db.session import get_db
 from app.models import Base, User, Puzzle, Game, Round, Submission
 from app.websocket.manager import ConnectionManager
-from app.config import settings
-from tests.factories import UserFactory, PuzzleFactory, GameFactory, RoundFactory, SubmissionFactory
 
 # Test database URL (in-memory SQLite)
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"

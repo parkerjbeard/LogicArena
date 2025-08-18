@@ -3,11 +3,10 @@ import pytest_asyncio
 import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import StaticPool
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 from app.models import Base
 from httpx import AsyncClient
-from fastapi import FastAPI
 
 # Test database URL (in-memory SQLite)
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
@@ -106,7 +105,6 @@ async def test_client(test_db):
     app.dependency_overrides[get_db] = override_get_session
     
     # Mock Redis for WebSocket manager
-    from app.websocket.manager import ConnectionManager
     # Skip WebSocket manager mocking for now since it's not used in these tests
     
     async with AsyncClient(app=app, base_url="http://test") as client:

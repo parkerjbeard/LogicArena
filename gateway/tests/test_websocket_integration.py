@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi import WebSocket
 from fastapi.testclient import TestClient
 
-from app.main import app, connection_manager
+from main import app, connection_manager
 from app.websocket.manager import ConnectionManager
-from tests.conftest import create_mock_redis_message
+from tests.conftest_full import create_mock_redis_message
 
 
 class TestWebSocketIntegration:

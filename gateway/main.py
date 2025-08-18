@@ -1,13 +1,9 @@
 import os
 import json
 from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
-import logging
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any
 import time
-import httpx
 import redis.asyncio as redis
 from fastapi_limiter import FastAPILimiter
 import asyncio
@@ -15,23 +11,51 @@ import asyncio
 from app.users.router import router as users_router
 from app.puzzles.router import router as puzzles_router
 from app.games.router import router as games_router
+from app.csrf_router import router as csrf_router
+from app.logs_router import router as logs_router
+from app.log_viewer_router import router as log_viewer_router
 # from app.tutorials.router import router as tutorials_router  # TODO: Add tutorials module
 # from app.admin.verification_router import router as verification_admin_router  # TODO: Add admin module
 from app.config import settings
 from app.db.session import engine, get_db, pool_monitor, close_db_connections, verify_db_connection
 from app.db.health import db_health_checker
-from app.db.pool_optimizer import pool_optimizer
 from app.models import Base
 from app.websocket.manager import ConnectionManager
 from app.middleware.logging_middleware import LoggingMiddleware
+from app.middleware.csrf import CSRFMiddleware, CSRFTokenInjectionMiddleware
+from app.csrf import csrf_protection
+from app.logging_config import setup_logging, get_logger
+from app.security import configure_security_middleware
+from app.middleware.rate_limiter import RateLimitHeaderMiddleware
+from app.middleware.database import DatabaseMiddleware
 # from app.background import start_continuous_verification, stop_continuous_verification  # TODO: Add background module
+from app.tracing import setup_tracing, get_tracer, create_span, add_span_event, set_span_attributes
 
-# Configure logging - simplified for demo
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+# Optional Sentry integration for backend error reporting
+try:
+    import sentry_sdk
+    from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
+    SENTRY_DSN = os.getenv("SENTRY_DSN")
+    if SENTRY_DSN:
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            environment=os.getenv("ENVIRONMENT", "production"),
+            traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+            profiles_sample_rate=float(os.getenv("SENTRY_PROFILES_SAMPLE_RATE", "0.1")),
+        )
+except Exception:
+    SENTRY_DSN = None
+
+# Configure structured logging
+
+setup_logging(
+    log_level=os.getenv("LOG_LEVEL", "INFO"),
+    log_dir=os.getenv("LOG_DIR", "logs"),
+    enable_console=os.getenv("ENABLE_CONSOLE_LOGS", "true").lower() == "true",
+    enable_file=os.getenv("ENABLE_FILE_LOGS", "true").lower() == "true"
 )
-logger = logging.getLogger("gateway")
+
+logger = get_logger("gateway")
 
 # Create FastAPI app
 app = FastAPI(
@@ -40,25 +64,40 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# Setup distributed tracing
+# DISABLED: OpenTelemetry causing errors with ASGI scope handling
+# setup_tracing(app)
+
 # Configure security middleware (includes CORS)
-from app.security import configure_security_middleware
 configure_security_middleware(app)
 
 # Add rate limit header middleware
-from app.middleware.rate_limiter import RateLimitHeaderMiddleware
 app.add_middleware(RateLimitHeaderMiddleware)
 
 # Add logging middleware
 app.add_middleware(LoggingMiddleware)
 
+# Add Sentry middleware if configured
+if SENTRY_DSN:
+    app.add_middleware(SentryAsgiMiddleware)
+
+# Add CSRF protection middleware
+app.add_middleware(CSRFTokenInjectionMiddleware)  # Inject tokens for authenticated users
+app.add_middleware(CSRFMiddleware)  # Validate CSRF tokens
+
 # Add database middleware for error handling and monitoring
-from app.middleware.database import DatabaseMiddleware, ConnectionPoolMiddleware
 app.add_middleware(DatabaseMiddleware)
 # Temporarily disable ConnectionPoolMiddleware due to compatibility issues
 # app.add_middleware(ConnectionPoolMiddleware)
 
 # Initialize WebSocket connection manager
 connection_manager = ConnectionManager()
+
+# Add global OPTIONS handler for CORS preflight
+# This must be after middleware but before routers
+@app.options("/{path:path}")
+async def options_handler(path: str):
+    return {}
 
 # Game event processor task
 game_event_processor_task = None
@@ -100,6 +139,11 @@ async def process_game_events():
 
 # Include routers
 app.include_router(
+    csrf_router,
+    prefix="/api/csrf",
+    tags=["CSRF"]
+)
+app.include_router(
     users_router, 
     prefix="/api/users", 
     tags=["Users"]
@@ -113,6 +157,16 @@ app.include_router(
     games_router, 
     prefix="/api/games", 
     tags=["Games"]
+)
+app.include_router(
+    logs_router,
+    prefix="/api/logs",
+    tags=["Logs"]
+)
+app.include_router(
+    log_viewer_router,
+    prefix="/api/logs/viewer",
+    tags=["Log Viewer"]
 )
 # app.include_router(
 #     tutorials_router,
@@ -158,6 +212,10 @@ async def startup():
     redis_instance = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
     await FastAPILimiter.init(redis_instance)
     
+    # Initialize CSRF protection
+    await csrf_protection.initialize()
+    logger.info("CSRF protection initialized")
+    
     # Initialize WebSocket manager with Redis
     await connection_manager.initialize(settings.REDIS_URL)
     
@@ -189,6 +247,9 @@ async def shutdown():
     # Stop connection pool monitoring
     await pool_monitor.stop_monitoring()
     
+    # Cleanup CSRF protection
+    await csrf_protection.cleanup()
+    
     # Cleanup WebSocket manager
     await connection_manager.cleanup()
     
@@ -203,7 +264,33 @@ async def root():
 
 @app.get("/health", tags=["Health"])
 async def health():
-    return {"status": "healthy", "timestamp": time.time()}
+    return {
+        "status": "healthy", 
+        "timestamp": time.time(),
+        "deployment_color": os.getenv("DEPLOYMENT_COLOR", "default"),
+        "environment": os.getenv("ENVIRONMENT", "production")
+    }
+
+@app.get("/ready", tags=["Health"])
+async def readiness():
+    """Readiness probe: checks DB connectivity and Redis availability."""
+    try:
+        # Basic DB check using existing helper
+        ok = await verify_db_connection()
+        if not ok:
+            raise RuntimeError("db_not_ready")
+        # Basic Redis ping
+        r = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        await r.ping()
+        await r.close()
+        return {"status": "ready"}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail={"status": "not_ready", "error": str(e)})
+
+@app.get("/live", tags=["Health"])
+async def liveness():
+    """Liveness probe: returns 200 if process handles requests."""
+    return {"status": "alive"}
 
 @app.get("/health/db", tags=["Health"])
 async def health_db():
@@ -311,7 +398,7 @@ async def websocket_notifications_endpoint(
             # Handle any specific notification commands if needed
             if message.type == "mark_read":
                 # Mark notifications as read
-                notification_ids = message.data.get("notification_ids", [])
+                message.data.get("notification_ids", [])
                 # TODO: Update database to mark notifications as read
                 
     except WebSocketDisconnect:

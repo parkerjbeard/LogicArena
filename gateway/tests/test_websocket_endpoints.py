@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 from fastapi import WebSocket, WebSocketDisconnect
 
-from app.main import app, connection_manager, publish_game_event
-from tests.conftest import assert_message_published
+from main import app, connection_manager, publish_game_event
+from tests.conftest_full import assert_message_published
 
 
 class MockWebSocket:

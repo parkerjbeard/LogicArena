@@ -165,7 +165,7 @@ async def get_leaderboard_users(db: AsyncSession, limit: int = 100) -> List[User
     """
     result = await db.execute(
         select(User)
-        .filter(User.is_active == True)
+        .filter(User.is_active)
         .order_by(User.rating.desc())
         .limit(limit)
         .options(

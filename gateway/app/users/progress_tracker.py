@@ -10,7 +10,7 @@ import logging
 
 from app.models import (
     User, UserPuzzleProgress, UserTutorialProgress, 
-    UserAchievement, UserDailyStats, Submission
+    UserDailyStats
 )
 
 logger = logging.getLogger(__name__)

@@ -1,15 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func, desc, delete, and_
+from sqlalchemy import func, desc
 from typing import List, Optional
-import json
 from datetime import datetime, date, timedelta
 import bcrypt
-import logging
+from app.csrf import validate_csrf_token
+from app.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 from app.db.session import get_db
 from app.models import (
@@ -24,8 +23,7 @@ from app.users.profile_schemas import (
     AchievementResponse,
     DailyStatsResponse,
     LeaderboardEntry,
-    LeaderboardResponse,
-    UserStatsUpdate
+    LeaderboardResponse
 )
 from app.users.schemas import (
     UserStatsResponse, 
@@ -39,7 +37,8 @@ from app.users.schemas import (
 
 router = APIRouter()
 
-@router.post("/supabase-profile", response_model=SupabaseProfileResponse)
+@router.post("/supabase-profile", response_model=SupabaseProfileResponse,
+             dependencies=[Depends(validate_csrf_token)])
 async def create_or_update_supabase_profile(
     profile_data: SupabaseProfileCreate,
     db: AsyncSession = Depends(get_db)
@@ -229,7 +228,7 @@ async def get_user_profile(
     puzzles_solved_result = await db.execute(
         select(func.count(Submission.id)).where(
             Submission.user_id == user_id,
-            Submission.verdict == True
+            Submission.verdict
         )
     )
     puzzles_solved = puzzles_solved_result.scalar() or 0
@@ -246,7 +245,7 @@ async def get_user_profile(
     unique_puzzles_result = await db.execute(
         select(func.count(func.distinct(Submission.puzzle_id))).where(
             Submission.user_id == user_id,
-            Submission.verdict == True,
+            Submission.verdict,
             Submission.puzzle_id.isnot(None)
         )
     )
@@ -275,7 +274,7 @@ async def get_user_profile(
         select(UserTutorialProgress.tutorial_id)
         .where(
             UserTutorialProgress.user_id == user_id,
-            UserTutorialProgress.completed == True
+            UserTutorialProgress.completed
         )
     )
     completed_tutorials = [row[0] for row in tutorials_result.all()]
@@ -376,7 +375,7 @@ async def get_user_stats(
     puzzles_solved_result = await db.execute(
         select(func.count(Submission.id)).where(
             Submission.user_id == user_id,
-            Submission.verdict == True
+            Submission.verdict
         )
     )
     puzzles_solved = puzzles_solved_result.scalar() or 0
@@ -477,7 +476,7 @@ async def get_leaderboard(
     """Get the global leaderboard sorted by different criteria"""
     # Get total count of active users
     count_result = await db.execute(
-        select(func.count(User.id)).where(User.is_active == True)
+        select(func.count(User.id)).where(User.is_active)
     )
     total_users = count_result.scalar() or 0
     
@@ -497,7 +496,7 @@ async def get_leaderboard(
     # Get leaderboard entries
     result = await db.execute(
         select(User)
-        .where(User.is_active == True)
+        .where(User.is_active)
         .order_by(order_by)
         .limit(per_page)
         .offset(offset)
@@ -524,7 +523,7 @@ async def get_leaderboard(
         puzzles_result = await db.execute(
             select(func.count(Submission.id)).where(
                 Submission.user_id == user.id,
-                Submission.verdict == True
+                Submission.verdict
             )
         )
         puzzles_solved = puzzles_result.scalar() or 0
@@ -554,7 +553,8 @@ async def get_leaderboard(
     )
 
 
-@router.patch("/profile/{user_id}")
+@router.patch("/profile/{user_id}",
+              dependencies=[Depends(validate_csrf_token)])
 async def update_user_profile(
     user_id: int,
     profile_update: UserProfileUpdate,

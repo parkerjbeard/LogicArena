@@ -6,8 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import WebSocket
 from fastapi.testclient import TestClient
 
-from main import app, process_game_events, connection_manager
-from app.games.router import publish_game_event
+from main import app, process_game_events, connection_manager, publish_game_event
 from app.websocket.manager import ConnectionManager
 
 

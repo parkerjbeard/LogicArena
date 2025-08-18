@@ -2,7 +2,7 @@
 Security configuration and middleware for LogicArena API Gateway
 """
 import os
-from typing import List, Optional
+from typing import List
 from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -109,7 +109,13 @@ def configure_cors(app):
             "Content-Type",
             "Authorization", 
             "X-Request-ID",
-            "X-CSRF-Token"
+            "X-CSRF-Token",
+            "X-Requested-With",
+            "Cache-Control",
+            "Pragma",
+            "Accept",
+            "Accept-Language",
+            "Content-Language"
         ],
         expose_headers=[
             "X-Request-ID",

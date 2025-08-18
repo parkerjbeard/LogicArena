@@ -6,7 +6,6 @@ from typing import List, Dict, Set, Optional, Any
 from fastapi import WebSocket
 import redis.asyncio as redis
 from pydantic import BaseModel, ValidationError
-from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 

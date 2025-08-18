@@ -1,25 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func, desc
+from sqlalchemy import desc
 from typing import List, Optional
-import json
-import time
-from datetime import datetime
 import logging
-import httpx
-import random
 
 from app.db.session import get_db
 from app.models import Game, Round, Submission, User
 from app.games.schemas import (
     GameResponse,
-    GameDetail,
-    DuelSubmission,
-    DuelResponse
+    GameDetail
 )
-from app.config import settings
-from app.middleware.rate_limiter import RateLimiters
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +159,7 @@ async def list_active_games(
             select(Round)
             .filter(Round.game_id == game.id, Round.round_number == game.current_round)
         )
-        current_round_obj = round_result.scalars().first()
+        round_result.scalars().first()
         
         active_games.append(GameResponse(
             id=game.id,

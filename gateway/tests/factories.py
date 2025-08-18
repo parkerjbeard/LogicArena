@@ -1,5 +1,5 @@
 import factory
-from factory import LazyAttribute, SubFactory, Sequence, Faker
+from factory import LazyAttribute, SubFactory, Sequence
 from datetime import datetime, timezone
 from app.models import User, Puzzle, Game, Round, Submission
 

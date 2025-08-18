@@ -1,12 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func, desc, asc, and_, or_
+from sqlalchemy import func, asc, and_
 from typing import List, Optional
 import time
 import httpx
 import logging
 import random
+
+from app.csrf import validate_csrf_token
 
 from app.db.session import get_db
 from app.models import User, Puzzle, Submission, PuzzleVerificationLog
@@ -28,14 +30,26 @@ from app.puzzles.schemas import (
 )
 from app.puzzles.verifier import (
     get_verification_service,
-    BatchPuzzleVerifier,
-    VerificationResult
+    BatchPuzzleVerifier
 )
 from app.config import settings
 from app.middleware.rate_limiter import RateLimiters
-from app.hint_analyzer import generate_contextual_hints
+try:
+    # Try to use the bridge that connects to enhanced hints
+    from app.hint_analyzer_bridge import generate_contextual_hints
+except ImportError:
+    # Fall back to original if bridge not available
+    from app.hint_analyzer import generate_contextual_hints
 from app.users.progress_tracker import ProgressTracker
 import datetime
+from app.tracing_utils import (
+    trace_method, 
+    trace_database_operation,
+    trace_cache_operation,
+    trace_external_call,
+    add_business_event,
+    add_user_context
+)
 
 logger = logging.getLogger(__name__)
 
@@ -157,18 +171,26 @@ async def get_puzzle(
     return puzzle
 
 @router.post("/submit", response_model=ProofResponse, 
-             dependencies=[Depends(RateLimiters.puzzle_submit)])
+             dependencies=[Depends(RateLimiters.puzzle_submit), Depends(validate_csrf_token)])
+@trace_method("submit_proof")
 async def submit_proof(
     submission: ProofSubmission,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
     """Submit a proof for verification"""
+    # Add submission context to trace
+    add_business_event("proof_submission_started", 
+                      puzzle_id=submission.puzzle_id,
+                      proof_length=len(submission.payload))
+    
     # Check if puzzle exists
-    result = await db.execute(select(Puzzle).filter(Puzzle.id == submission.puzzle_id))
-    puzzle = result.scalars().first()
+    with trace_database_operation("select"):
+        result = await db.execute(select(Puzzle).filter(Puzzle.id == submission.puzzle_id))
+        puzzle = result.scalars().first()
     
     if not puzzle:
+        add_business_event("puzzle_not_found", puzzle_id=submission.puzzle_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Puzzle not found"
@@ -180,20 +202,21 @@ async def submit_proof(
     counter_model = None
     
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{settings.PROOF_CHECKER_URL}/verify",
-                json={
-                    "gamma": puzzle.gamma,
-                    "phi": puzzle.phi,
-                    "proof": submission.payload
-                },
-                timeout=5.0
-            )
-            
-            result = response.json()
-            verdict = result.get("ok", False)
-            syntax_info = result.get("syntax_info")
+        with trace_external_call("proof-checker", "/verify", "POST"):
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{settings.PROOF_CHECKER_URL}/verify",
+                    json={
+                        "gamma": puzzle.gamma,
+                        "phi": puzzle.phi,
+                        "proof": submission.payload
+                    },
+                    timeout=5.0
+                )
+                
+                result = response.json()
+                verdict = result.get("ok", False)
+                syntax_info = result.get("syntax_info")
             
             if not verdict:
                 error_message = result.get("error")
@@ -266,7 +289,7 @@ async def update_user_stats_after_valid_submission(user_id: int, puzzle_id: int)
     pass
 
 @router.post("/hints", response_model=HintListResponse,
-             dependencies=[Depends(RateLimiters.puzzle_submit)])
+             dependencies=[Depends(RateLimiters.puzzle_submit), Depends(validate_csrf_token)])
 async def get_contextual_hints(
     hint_request: HintRequest,
     db: AsyncSession = Depends(get_db)
@@ -329,7 +352,8 @@ async def get_contextual_hints(
         )
 
 @router.post("/", response_model=PuzzleDetail,
-             status_code=status.HTTP_201_CREATED)
+             status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(validate_csrf_token)])
 async def create_puzzle(
     puzzle: PuzzleCreate,
     verify: bool = Query(True, description="Verify puzzle after creation"),
@@ -496,7 +520,8 @@ async def filter_puzzles(
     )
 
 @router.post("/generate/{category}", response_model=PuzzleDetail,
-             status_code=status.HTTP_201_CREATED)
+             status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(validate_csrf_token)])
 async def generate_puzzle(
     category: str,
     difficulty: Optional[int] = Query(None, ge=1, le=10),
@@ -549,7 +574,7 @@ async def generate_puzzle(
         )
 
 @router.post("/verify/{puzzle_id}", response_model=PuzzleVerificationResponse,
-             dependencies=[Depends(RateLimiters.puzzle_submit)])
+             dependencies=[Depends(RateLimiters.puzzle_submit), Depends(validate_csrf_token)])
 async def verify_puzzle(
     puzzle_id: int,
     request: PuzzleVerificationRequest,
@@ -609,7 +634,8 @@ async def verify_puzzle(
             detail="Verification failed"
         )
 
-@router.post("/verify/batch", response_model=List[PuzzleVerificationResponse])
+@router.post("/verify/batch", response_model=List[PuzzleVerificationResponse],
+             dependencies=[Depends(validate_csrf_token)])
 async def verify_batch(
     puzzle_ids: List[int],
     db: AsyncSession = Depends(get_db)
