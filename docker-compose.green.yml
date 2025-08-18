@@ -1,0 +1,153 @@
+version: '3.8'
+
+services:
+  # API Gateway - Green
+  gateway-green:
+    build: ./gateway
+    container_name: logicarena_gateway_green
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET=${JWT_SECRET}
+      - SECRET_KEY=${SECRET_KEY}
+      - CSRF_SECRET=${CSRF_SECRET}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - PROOF_CHECKER_URL=http://proof-checker:5003
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - ENVIRONMENT=staging-green
+      - DEBUG=${DEBUG:-False}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DEPLOYMENT_COLOR=green
+      - TRACING_ENABLED=true
+      - SERVICE_NAME=logicarena-gateway-green
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - OTLP_ENABLED=false
+    volumes:
+      - ./shared:/app/shared:ro
+    restart: always
+    networks:
+      - logic_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "deployment=green"
+      - "service=gateway"
+
+  # Frontend - Green
+  front-green:
+    build: ./front
+    container_name: logicarena_front_green
+    expose:
+      - "3000"
+    environment:
+      - API_URL=http://gateway-green:8000
+      - WS_URL=ws://gateway-green:8000
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost/api}
+      - NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL:-ws://localhost/ws}
+      - SENTRY_DSN_FRONTEND=${SENTRY_DSN_FRONTEND:-}
+      - ENVIRONMENT=staging-green
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      - DEPLOYMENT_COLOR=green
+    restart: always
+    networks:
+      - logic_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "deployment=green"
+      - "service=frontend"
+
+  # Matchmaking Service - Green
+  match-green:
+    build: ./match
+    container_name: logicarena_match_green
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379/0
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - ENVIRONMENT=staging-green
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DEPLOYMENT_COLOR=green
+    volumes:
+      - ./shared:/app/shared:ro
+    restart: always
+    networks:
+      - logic_network
+    labels:
+      - "deployment=green"
+      - "service=matchmaking"
+
+  # Puzzle Service - Green
+  puzzle-green:
+    build: ./puzzle
+    container_name: logicarena_puzzle_green
+    depends_on:
+      - postgres
+      - redis
+      - proof-checker
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379/0
+      - PROOF_CHECKER_URL=http://proof-checker:5003
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - ENVIRONMENT=staging-green
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DEPLOYMENT_COLOR=green
+    volumes:
+      - ./shared:/app/shared:ro
+    restart: always
+    networks:
+      - logic_network
+    labels:
+      - "deployment=green"
+      - "service=puzzle"
+
+  # Rating Service - Green
+  rating-green:
+    build: ./rating
+    container_name: logicarena_rating_green
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379/0
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - ENVIRONMENT=staging-green
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DEPLOYMENT_COLOR=green
+    volumes:
+      - ./shared:/app/shared:ro
+    restart: always
+    networks:
+      - logic_network
+    labels:
+      - "deployment=green"
+      - "service=rating"
+
+networks:
+  logic_network:
+    external: true

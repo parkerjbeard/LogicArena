@@ -188,6 +188,40 @@ class CarnapFitchProofChecker:
         formula = ' '.join(formula.split())
         return formula
     
+    def strip_outer_parens(self, formula: str) -> str:
+        """Remove outer parentheses if they wrap the entire formula"""
+        formula = formula.strip()
+        if not formula:
+            return formula
+        if formula[0] == '(' and formula[-1] == ')':
+            # Check if these parentheses match
+            depth = 0
+            for i, char in enumerate(formula):
+                if char == '(':
+                    depth += 1
+                elif char == ')':
+                    depth -= 1
+                    if depth == 0 and i < len(formula) - 1:
+                        # Parentheses close before the end
+                        return formula
+            # If we get here, outer parens wrap the whole formula
+            return self.strip_outer_parens(formula[1:-1])
+        return formula
+    
+    def split_conditional(self, formula: str) -> Tuple[str, str]:
+        """Split a conditional formula (A→B) into antecedent and consequent"""
+        # Find the main → operator (not inside parentheses)
+        depth = 0
+        for i, char in enumerate(formula):
+            if char == '(':
+                depth += 1
+            elif char == ')':
+                depth -= 1
+            elif char == '→' and depth == 0:
+                # Found the main conditional
+                return formula[:i].strip(), formula[i+1:].strip()
+        return None, None
+    
     def parse_premises(self, gamma: str) -> List[str]:
         """Parse comma-separated premises"""
         if not gamma.strip():
@@ -240,6 +274,11 @@ class CarnapFitchProofChecker:
             # Measure indentation
             current_indent = self.measure_indentation(line)
             stripped_line = line.strip()
+
+            # Detect if this line is a QED closer before adjusting indentation
+            is_qed_line_ahead = bool(
+                stripped_line.startswith(':') or re.match(r'^qed\s*:', stripped_line, flags=re.IGNORECASE)
+            )
             
             line_num += 1
             
@@ -256,8 +295,8 @@ class CarnapFitchProofChecker:
                     expecting_indent_after_show = False
                 else:
                     self.errors.append(f"Line {line_num}: Expected indentation after 'show' statement")
-            elif current_indent < indent_stack[-1]:
-                # Decrease in indentation - close subproofs
+            elif current_indent < indent_stack[-1] and not is_qed_line_ahead:
+                # Decrease in indentation - close subproofs (but not before processing a QED line)
                 while len(indent_stack) > 1 and indent_stack[-1] > current_indent:
                     indent_stack.pop()
                     if self.subproof_stack:
@@ -295,8 +334,14 @@ class CarnapFitchProofChecker:
                 show_indent_level = current_indent
                 continue
             
-            # Parse regular line or QED line
-            if stripped_line.startswith(':'):
+            # Handle explicit QED line written as "QED :..."
+            qed_match = re.match(r'^qed\s*:\s*(.+)$', stripped_line, flags=re.IGNORECASE)
+            if qed_match:
+                formula = "QED"
+                justification = qed_match.group(1).strip()
+                is_qed = True
+            # Parse regular line or colon-led QED line
+            elif stripped_line.startswith(':'):
                 # QED line (e.g., ":DD" or ":CD 3-5")
                 formula = "QED"
                 justification = stripped_line[1:].strip()
@@ -337,6 +382,19 @@ class CarnapFitchProofChecker:
                 'is_show': False,
                 'is_qed': is_qed
             })
+
+            # If this was a QED line, close the current subproof(s) to match the indentation after processing
+            if is_qed:
+                # Pop indentation and subproof stacks to align with current indentation
+                while len(indent_stack) > 1 and indent_stack[-1] > current_indent:
+                    indent_stack.pop()
+                    if self.subproof_stack:
+                        subproof = self.subproof_stack.pop()
+                        # Mark lines from closed subproof as no longer accessible
+                        for j in range(subproof['start'], line_num + 1):
+                            step_at_j = next((s for s in parsed_steps if s['line_number'] == j), None)
+                            if step_at_j and step_at_j.get('rule') != 'PR':
+                                self.accessible_lines.discard(j)
         
         return parsed_steps
     
@@ -450,7 +508,7 @@ class CarnapFitchProofChecker:
             self.errors.append(f"Line {qed_step['line_number']}: Direct derivation must derive the shown formula")
             return False
             
-        elif rule == 'CD':  # Conditional Derivation
+        elif rule in ['CD', '->I', '→I', 'CP']:  # Conditional Derivation / Conditional Introduction
             # Should close a conditional show
             if '→' in show_formula or '->' in show_formula:
                 return True
@@ -485,15 +543,19 @@ class CarnapFitchProofChecker:
                 for i, formula in enumerate(ref_formulas):
                     formula_norm = self.normalize_formula(formula)
                     if '→' in formula_norm:
-                        parts = formula_norm.split('→', 1)
-                        if len(parts) == 2:
-                            antecedent = self.normalize_formula(parts[0].strip())
-                            consequent = self.normalize_formula(parts[1].strip())
+                        # Use proper parsing that respects parentheses
+                        antecedent, consequent = self.split_conditional(formula_norm)
+                        if antecedent and consequent:
+                            # Normalize and strip outer parentheses for comparison
+                            antecedent_norm = self.strip_outer_parens(self.normalize_formula(antecedent))
+                            consequent_norm = self.strip_outer_parens(self.normalize_formula(consequent))
+                            conclusion_stripped = self.strip_outer_parens(conclusion_norm)
+                            
                             # Check other formulas for antecedent
                             for j, other in enumerate(ref_formulas):
                                 if i != j:
-                                    other_norm = self.normalize_formula(other)
-                                    if other_norm.strip() == antecedent.strip() and consequent.strip() == conclusion_norm.strip():
+                                    other_norm = self.strip_outer_parens(self.normalize_formula(other))
+                                    if other_norm == antecedent_norm and consequent_norm == conclusion_stripped:
                                         return True
                 self.errors.append(f"Line {line_num}: Invalid {self.INFERENCE_RULES[rule]} - need conditional and its antecedent")
                 return False
