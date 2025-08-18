@@ -1,0 +1,29 @@
+# Ignore all backup data files
+data/
+logs/
+
+# But keep the directory structure
+!data/.gitkeep
+!logs/.gitkeep
+
+# Ignore test outputs
+*.log
+*.tmp
+test-results/
+
+# Ignore any decrypted or temporary backup files
+*.sql
+*.sql.gz
+*.sql.gz.gpg
+*.sql.gz.age
+*.dump
+*.tar
+*.tar.gz
+
+# Keep configuration and scripts
+!scripts/
+!config/
+!*.sh
+!*.md
+!Dockerfile
+!.gitignore

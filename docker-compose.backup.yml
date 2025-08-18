@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  backup:
+    build:
+      context: ./backups
+      dockerfile: Dockerfile
+    container_name: logicarena_backup
+    restart: unless-stopped
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=logicarena
+      - DB_USER=logicuser
+      - DB_PASSWORD=${DB_PASSWORD:-DevP@ssw0rd2024!}
+      - BACKUP_DIR=/backups/data
+      - WEBHOOK_URL=${BACKUP_WEBHOOK_URL:-}
+      - VERIFY_RESTORE=${VERIFY_RESTORE:-false}
+      - TZ=${TZ:-America/New_York}
+    volumes:
+      - ./backups/data:/backups/data
+      - ./backups/logs:/backups/logs
+    networks:
+      - logic_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  logic_network:
+    external: true
+
+volumes:
+  backup_data:
+    driver: local

@@ -1,0 +1,20 @@
+# Crontab for LogicArena Database Backups
+# Format: minute hour day-of-month month day-of-week command
+
+# Daily backup at 2:00 AM (except Sunday and 1st of month)
+0 2 2-31 * 1-6 /backups/scripts/backup.sh >> /var/log/cron.log 2>&1
+
+# Weekly backup on Sunday at 2:00 AM (except 1st of month)
+0 2 2-31 * 0 /backups/scripts/backup.sh >> /var/log/cron.log 2>&1
+
+# Monthly backup on 1st of each month at 2:00 AM
+0 2 1 * * /backups/scripts/backup.sh >> /var/log/cron.log 2>&1
+
+# Health check - write timestamp every hour
+0 * * * * echo "Health check: $(date)" >> /backups/data/health.log 2>&1
+
+# Cleanup old logs weekly (keep last 30 days)
+0 3 * * 0 find /backups/data -name "*.log" -mtime +30 -delete >> /var/log/cron.log 2>&1
+
+# Optional: Test backup restore weekly (disabled by default)
+# 0 4 * * 0 VERIFY_RESTORE=true /backups/scripts/backup.sh >> /var/log/cron.log 2>&1
