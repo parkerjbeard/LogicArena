@@ -24,14 +24,14 @@ export const ResponsiveCard = forwardRef<HTMLDivElement, ResponsiveCardProps>(
     const { isMobile } = useBreakpoint();
 
     const variantStyles = {
-      default: 'bg-gray-800/30 backdrop-blur-sm border border-gray-700/50',
-      elevated: 'bg-gray-800/50 backdrop-blur-sm shadow-xl border border-gray-700/30',
-      outlined: 'bg-transparent border-2 border-gray-700',
+      default: 'surface border border-default',
+      elevated: 'surface border border-default shadow-xl',
+      outlined: 'bg-transparent border-2 border-default',
       interactive: `
-        bg-gray-800/30 backdrop-blur-sm border border-gray-700/50
+        surface border border-default
         ${inputMethod === 'touch' 
-          ? 'active:scale-[0.98] active:bg-gray-700/30' 
-          : 'hover:bg-gray-700/30 hover:border-gray-600/50 hover:shadow-lg'
+          ? 'active:scale-[0.98]' 
+          : 'hover:opacity-95 hover:shadow-lg'
         }
         transition-all duration-200 cursor-pointer
       `,
@@ -89,11 +89,11 @@ export const CardHeader: React.FC<CardHeaderProps> = ({
   return (
     <div className={`flex items-start justify-between ${className}`}>
       <div className="flex-1">
-        <h3 className={`font-semibold ${isMobile ? 'text-lg' : 'text-base'} text-white`}>
+        <h3 className={`font-semibold ${isMobile ? 'text-lg' : 'text-base'}`}>
           {title}
         </h3>
         {subtitle && (
-          <p className={`mt-1 ${isMobile ? 'text-sm' : 'text-xs'} text-gray-400`}>
+          <p className={`mt-1 ${isMobile ? 'text-sm' : 'text-xs'} text-gray-700 dark:text-gray-400`}>
             {subtitle}
           </p>
         )}

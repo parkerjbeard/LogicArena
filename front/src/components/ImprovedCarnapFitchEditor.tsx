@@ -174,6 +174,20 @@ const parseProofLine = (line: string, lineNumber: number, showErrors: boolean = 
   const normalizedLine = normalizeFormula(line);
   const trimmed = normalizedLine.trim();
   
+  // Check if it's an empty line - return early without error
+  if (trimmed.length === 0) {
+    return {
+      lineNumber,
+      formula: '',
+      justification: '',
+      references: [],
+      indentLevel: 0,
+      isShow: false,
+      isComment: false,
+      hasError: false
+    };
+  }
+  
   // Check if it's a comment
   if (trimmed.startsWith('//') || trimmed.startsWith('#')) {
     return {
@@ -382,7 +396,15 @@ const ImprovedCarnapFitchEditor: React.FC<CarnapFitchEditorProps> = ({
     const newValue = currentValue.trim() ? `${premiseLines}\n${currentValue}` : premiseLines;
     
     onChange(newValue);
-    textareaRef.current.focus();
+    
+    // Set cursor to end of inserted premises
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const position = premiseLines.length;
+        textareaRef.current.setSelectionRange(position, position);
+        textareaRef.current.focus();
+      }
+    }, 0);
   }, [premises, onChange]);
 
   // Handle key events for auto-indentation and auto-completion

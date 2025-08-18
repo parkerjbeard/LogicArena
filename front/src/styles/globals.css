@@ -3,23 +3,41 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-rgb: 255, 255, 255;
+  --foreground-rgb: 17, 24, 39; /* gray-900 */
+  --foreground-muted-rgb: 75, 85, 99; /* gray-600 */
+  --background-rgb: 248, 250, 252; /* slate-50 */
+  --surface-rgb: 255, 255, 255; /* white */
+  --border-rgb: 226, 232, 240; /* slate-200 */
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-rgb: 15, 23, 42;
-  }
+.dark:root {
+  --foreground-rgb: 243, 244, 246; /* gray-100 */
+  --foreground-muted-rgb: 156, 163, 175; /* gray-400 */
+  --background-rgb: 17, 24, 39; /* gray-900 */
+  --surface-rgb: 31, 41, 55; /* gray-800 */
+  --border-rgb: 55, 65, 81; /* gray-700 */
 }
 
 body {
   color: rgb(var(--foreground-rgb));
-  background: rgb(var(--background-rgb));
+  background-color: rgb(var(--background-rgb));
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
+}
+
+/* Generic surface helpers so components can opt-in without duplicating classes */
+.surface {
+  background-color: rgb(var(--surface-rgb));
+  color: rgb(var(--foreground-rgb));
+}
+
+.surface-muted {
+  background-color: rgba(var(--surface-rgb), 0.6);
+}
+
+.border-default {
+  border-color: rgb(var(--border-rgb));
 }
 
 /* Prevent iOS input zoom */

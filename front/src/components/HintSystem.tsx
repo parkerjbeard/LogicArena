@@ -32,6 +32,11 @@ export const HintSystem: React.FC<HintSystemProps> = ({
       if (!puzzleId) return;
       
       setLoading(true);
+      
+      // Add a small delay to ensure CSRF token is initialized
+      // This helps avoid the race condition on initial page load
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
       try {
         const response = await puzzleAPI.getContextualHints(puzzleId, currentProof || '');
         const contextualHints = response.hints.map((hint: any, index: number) => ({
@@ -42,6 +47,7 @@ export const HintSystem: React.FC<HintSystemProps> = ({
         setHints(contextualHints);
       } catch (error) {
         console.error('Failed to load contextual hints:', error);
+        // Only show the warning once, not repeatedly
         // Fall back to generic hints if contextual hints fail
         const fallbackHints: PuzzleHint[] = [
           {
@@ -67,7 +73,12 @@ export const HintSystem: React.FC<HintSystemProps> = ({
           }
         ];
         setHints(fallbackHints);
-        showToast('Using basic hints - contextual analysis unavailable', 'warning');
+        // Only show toast if we haven't shown it for this puzzle yet
+        const toastKey = `hints_warning_shown_${puzzleId}`;
+        if (!sessionStorage.getItem(toastKey)) {
+          showToast('Using basic hints - contextual analysis unavailable', 'warning');
+          sessionStorage.setItem(toastKey, 'true');
+        }
       } finally {
         setLoading(false);
       }
@@ -77,7 +88,7 @@ export const HintSystem: React.FC<HintSystemProps> = ({
     // Reset viewed hints when puzzle or proof changes
     setViewedHints(new Set());
     setShowHints(false);
-  }, [puzzleId, currentProof, showToast]);
+  }, [puzzleId]); // Only reload when puzzle changes, not on every proof keystroke
 
   const refreshHints = async () => {
     if (!puzzleId) return;

@@ -15,12 +15,13 @@ import {
   LogOut
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import ThemeToggle from '@/components/ThemeToggle';
 
 export default function ResponsiveNavigation() {
   const { isMobile, isTablet } = useBreakpoint();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
-  const { user, isAuthenticated, signOut } = useAuth();
+  const { user, username, isAuthenticated, signOut } = useAuth();
 
   // Close menu when switching to desktop
   useEffect(() => {
@@ -63,28 +64,29 @@ export default function ResponsiveNavigation() {
             <h1 className="text-2xl font-bold">LogicArena-α</h1>
           </Link>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             {mainNavItems.slice(1).map((item) => (
               <Link 
                 key={item.href}
                 href={item.href}
-                className="px-3 py-1.5 text-sm font-medium text-gray-300 hover:text-white bg-gray-800/50 rounded-md border border-gray-700 hover:bg-gray-700/50 transition-all"
+                className="px-3 py-1.5 text-sm font-medium rounded-md border border-default surface hover:opacity-90 transition-all dark:text-gray-200 text-gray-700"
               >
                 {item.label}
               </Link>
             ))}
+            <ThemeToggle />
             
             {isAuthenticated ? (
               <>
                 <Link 
                   href="/profile"
-                  className="px-3 py-1.5 text-sm font-medium text-gray-300 hover:text-white bg-gray-800/50 rounded-md border border-gray-700 hover:bg-gray-700/50 transition-all"
+                  className="px-3 py-1.5 text-sm font-medium rounded-md border border-default surface hover:opacity-90 transition-all dark:text-gray-200 text-gray-700"
                 >
-                  {user?.email?.split('@')[0] || 'Profile'}
+                  {username || 'Profile'}
                 </Link>
                 <button
                   onClick={() => signOut()}
-                  className="px-3 py-1.5 text-sm font-medium text-gray-300 hover:text-white bg-gray-800/50 rounded-md border border-gray-700 hover:bg-gray-700/50 transition-all"
+                  className="px-3 py-1.5 text-sm font-medium rounded-md border border-default surface hover:opacity-90 transition-all dark:text-gray-200 text-gray-700"
                 >
                   Logout
                 </button>
@@ -105,14 +107,14 @@ export default function ResponsiveNavigation() {
 
   // Mobile Top Bar
   const MobileTopBar = () => (
-    <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-gray-900 border-b border-gray-800">
+    <div className="lg:hidden fixed top-0 left-0 right-0 z-40 surface border-b border-default">
       <div className="flex items-center justify-between px-4 py-3">
         <Link href="/" className="flex items-center">
           <h1 className="text-xl font-bold">LogicArena-α</h1>
         </Link>
         <button
           onClick={() => setMobileMenuOpen(true)}
-          className="p-2 rounded-lg bg-gray-800/50 border border-gray-700 text-gray-300"
+          className="p-2 rounded-lg border border-default surface"
           aria-label="Open menu"
         >
           <Menu className="h-6 w-6" />
@@ -142,13 +144,13 @@ export default function ResponsiveNavigation() {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="lg:hidden fixed right-0 top-0 h-full w-80 bg-gray-900 border-l border-gray-800 z-50 overflow-y-auto"
+            className="lg:hidden fixed right-0 top-0 h-full w-80 surface border-l border-default z-50 overflow-y-auto"
           >
-            <div className="sticky top-0 bg-gray-900 border-b border-gray-800 p-4 flex items-center justify-between">
+            <div className="sticky top-0 surface border-b border-default p-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold">Menu</h2>
               <button
                 onClick={() => setMobileMenuOpen(false)}
-                className="p-2 rounded-lg bg-gray-800/50 border border-gray-700 text-gray-300"
+                className="p-2 rounded-lg border border-default surface"
                 aria-label="Close menu"
               >
                 <X className="h-5 w-5" />
@@ -162,7 +164,7 @@ export default function ResponsiveNavigation() {
                     key={item.href}
                     href={item.href}
                     onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800/50 transition-colors"
+                    className="flex items-center gap-3 px-4 py-3 rounded-lg transition-colors border border-transparent hover:border-default hover:surface"
                   >
                     <item.icon className="h-5 w-5" />
                     <span>{item.label}</span>
@@ -170,23 +172,26 @@ export default function ResponsiveNavigation() {
                 ))}
               </div>
               
-              <div className="mt-6 pt-6 border-t border-gray-800">
+              <div className="mt-6 pt-6 border-t border-default">
+                <div className="mb-4">
+                  <ThemeToggle />
+                </div>
                 {isAuthenticated ? (
                   <>
                     <Link
                       href="/profile"
                       onClick={() => setMobileMenuOpen(false)}
-                      className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800/50 transition-colors"
+                      className="flex items-center gap-3 px-4 py-3 rounded-lg transition-colors border border-transparent hover:border-default hover:surface"
                     >
                       <User className="h-5 w-5" />
-                      <span>{user?.email?.split('@')[0] || 'Profile'}</span>
+                      <span>{username || 'Profile'}</span>
                     </Link>
                     <button
                       onClick={() => {
                         setMobileMenuOpen(false);
                         signOut();
                       }}
-                      className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800/50 transition-colors"
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors border border-transparent hover:border-default hover:surface"
                     >
                       <LogOut className="h-5 w-5" />
                       <span>Logout</span>
@@ -212,13 +217,13 @@ export default function ResponsiveNavigation() {
 
   // Mobile Bottom Tab Bar
   const MobileTabBar = () => (
-    <div className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-gray-900 border-t border-gray-800 pb-safe-bottom">
+    <div className="lg:hidden fixed bottom-0 left-0 right-0 z-30 surface border-t border-default pb-safe-bottom">
       <nav className="flex items-center justify-around">
         {mainNavItems.map((item) => (
           <Link
             key={item.href}
             href={item.href}
-            className="flex flex-col items-center gap-1 py-2 px-3 text-gray-400 hover:text-white transition-colors"
+            className="flex flex-col items-center gap-1 py-2 px-3 text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white transition-colors"
           >
             <item.icon className="h-6 w-6" />
             <span className="text-xs">{item.label}</span>

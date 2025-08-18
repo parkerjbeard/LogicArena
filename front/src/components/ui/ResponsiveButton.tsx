@@ -92,17 +92,15 @@ export const ResponsiveButton = forwardRef<HTMLButtonElement, ResponsiveButtonPr
         ${inputMethod === 'touch' ? 'active:scale-[0.97]' : 'can-hover:hover:scale-[1.02]'}
       `,
       secondary: `
-        bg-gray-700 text-gray-200
-        hover:bg-gray-600 active:bg-gray-800
+        surface border border-default text-gray-700 dark:text-gray-200
+        hover:opacity-95 active:opacity-90
         focus:ring-gray-500
         ${inputMethod === 'touch' ? 'active:scale-[0.97]' : 'can-hover:hover:scale-[1.02]'}
       `,
       ghost: `
-        text-gray-300 
-        hover:text-white hover:bg-gray-800/50
-        active:bg-gray-800
+        text-gray-700 dark:text-gray-300 
+        hover:opacity-90
         focus:ring-gray-500
-        ${inputMethod === 'touch' ? 'active:bg-gray-800' : ''}
       `,
       danger: `
         bg-red-600 text-white

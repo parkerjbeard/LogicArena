@@ -83,7 +83,7 @@ const nextConfig = {
           cacheGroups: {
             // Split vendor code
             vendor: {
-              test: /(^|[\\/])node_modules[\\/]/,
+              test: /[\\/]?node_modules[\\/]/,
               name: 'vendor',
               priority: 10,
               reuseExistingChunk: true,
@@ -93,6 +93,14 @@ const nextConfig = {
             common: {
               minChunks: 2,
               priority: 5,
+              reuseExistingChunk: true,
+              enforce: true,
+            },
+            // Separate Monaco editor chunk
+            monaco: {
+              test: /[\\/]node_modules[\\/](monaco-editor|@monaco-editor[\\/]react)[\\/]/,
+              name: 'monaco',
+              priority: 20,
               reuseExistingChunk: true,
               enforce: true,
             },
@@ -151,6 +159,10 @@ const nextConfig = {
     webpackBuildWorker: true,
     // Enable partial prerendering for faster initial loads
     // ppr: true, // Temporarily disabled - requires Next.js canary version
+    // Enable CSS optimization (disabled in Docker due to missing critters dependency)
+    optimizeCss: false,
+    // Configure external packages for server components
+    serverComponentsExternalPackages: ['monaco-editor', '@monaco-editor/react'],
   },
 
   // Configure compression headers
@@ -199,6 +211,12 @@ const nextConfig = {
   typescript: {
     // Set to true to skip type checking during build (faster builds)
     ignoreBuildErrors: false,
+  },
+
+  // ESLint configuration
+  eslint: {
+    // Skip ESLint during production builds in Docker
+    ignoreDuringBuilds: process.env.DOCKER_BUILD === 'true',
   },
 }
 

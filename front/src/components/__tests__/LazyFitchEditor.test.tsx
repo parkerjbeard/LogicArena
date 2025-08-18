@@ -1,6 +1,6 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
-import { act } from 'react-dom/test-utils';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act } from 'react';
 import LazyFitchEditor from '../LazyFitchEditor';
 
 // Mock next/dynamic
@@ -72,8 +72,9 @@ describe('LazyFitchEditor', () => {
   it('should show loading skeleton initially', () => {
     render(<LazyFitchEditor {...defaultProps} />);
     
-    // Check for skeleton elements
-    expect(screen.getByTestId(/border.*animate-pulse/i)).toBeInTheDocument();
+    // Check for skeleton elements by class
+    const skeleton = document.querySelector('.animate-pulse');
+    expect(skeleton).toBeInTheDocument();
     expect(screen.queryByTestId('fitch-editor')).not.toBeInTheDocument();
   });
 
@@ -145,10 +146,7 @@ describe('LazyFitchEditor', () => {
     
     const textarea = screen.getByTestId('editor-textarea') as HTMLTextAreaElement;
     
-    act(() => {
-      textarea.value = 'new value';
-      textarea.dispatchEvent(new Event('change', { bubbles: true }));
-    });
+    fireEvent.change(textarea, { target: { value: 'new value' } });
     
     expect(defaultProps.onChange).toHaveBeenCalledWith('new value');
   });
@@ -172,7 +170,8 @@ describe('LazyFitchEditor', () => {
   it('should render loading skeleton with correct styling', () => {
     render(<LazyFitchEditor {...defaultProps} />);
     
-    const skeleton = screen.getByTestId(/border.*animate-pulse/i);
+    const skeleton = document.querySelector('.animate-pulse');
+    expect(skeleton).toBeInTheDocument();
     expect(skeleton).toHaveClass('border', 'border-gray-300', 'dark:border-gray-700', 'rounded-lg', 'overflow-hidden', 'animate-pulse');
   });
 

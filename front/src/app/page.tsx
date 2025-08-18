@@ -25,10 +25,10 @@ export default function Home() {
           transition={{ duration: 0.5 }}
           className="text-center mb-12 lg:mb-16"
         >
-          <h1 className="text-4xl lg:text-6xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-600 bg-clip-text text-transparent">
+          <h1 className="text-4xl lg:text-6xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-600 bg-clip-text text-transparent inline-block leading-tight lg:leading-[1.1] tracking-tight pb-1">
             Welcome to LogicArena
           </h1>
-          <p className="text-lg lg:text-xl text-gray-300 max-w-2xl mx-auto">
+          <p className="text-lg lg:text-xl text-gray-700 dark:text-gray-300 max-w-2xl mx-auto">
             Master natural deduction through interactive tutorials, practice puzzles, and competitive duels
           </p>
         </motion.div>
@@ -39,9 +39,9 @@ export default function Home() {
             transition={{ delay: 0.1 }}
           >
             <Link href="/tutorial">
-              <div className="bg-gray-800/30 backdrop-blur-sm p-6 lg:p-8 rounded-lg border border-gray-700/50 hover:bg-gray-700/30 hover:border-gray-600/50 transition-all cursor-pointer h-full">
-                <h2 className="text-xl lg:text-2xl font-semibold mb-3 text-white">📚 Interactive Tutorials</h2>
-                <p className="text-gray-300 text-sm lg:text-base">
+              <div className="surface p-6 lg:p-8 rounded-lg border border-default hover:opacity-95 transition-all cursor-pointer h-full">
+                <h2 className="text-xl lg:text-2xl font-semibold mb-3">📚 Interactive Tutorials</h2>
+                <p className="text-gray-700 dark:text-gray-300 text-sm lg:text-base">
                   Learn natural deduction step-by-step with guided lessons and interactive proof exercises
                 </p>
               </div>
@@ -53,9 +53,9 @@ export default function Home() {
             transition={{ delay: 0.2 }}
           >
             <Link href="/practice">
-              <div className="bg-gray-800/30 backdrop-blur-sm p-6 lg:p-8 rounded-lg border border-gray-700/50 hover:bg-gray-700/30 hover:border-gray-600/50 transition-all cursor-pointer h-full">
-                <h2 className="text-xl lg:text-2xl font-semibold mb-3 text-white">🧩 Practice Mode</h2>
-                <p className="text-gray-300 text-sm lg:text-base">
+              <div className="surface p-6 lg:p-8 rounded-lg border border-default hover:opacity-95 transition-all cursor-pointer h-full">
+                <h2 className="text-xl lg:text-2xl font-semibold mb-3">🧩 Practice Mode</h2>
+                <p className="text-gray-700 dark:text-gray-300 text-sm lg:text-base">
                   Solve puzzles at your own pace, from beginner to expert difficulty levels
                 </p>
               </div>
@@ -67,9 +67,9 @@ export default function Home() {
             transition={{ delay: 0.3 }}
           >
             <Link href="/leaderboard">
-              <div className="bg-gray-800/30 backdrop-blur-sm p-6 lg:p-8 rounded-lg border border-gray-700/50 hover:bg-gray-700/30 hover:border-gray-600/50 transition-all cursor-pointer h-full">
-                <h2 className="text-xl lg:text-2xl font-semibold mb-3 text-white">🏆 Leaderboard</h2>
-                <p className="text-gray-300 text-sm lg:text-base">
+              <div className="surface p-6 lg:p-8 rounded-lg border border-default hover:opacity-95 transition-all cursor-pointer h-full">
+                <h2 className="text-xl lg:text-2xl font-semibold mb-3">🏆 Leaderboard</h2>
+                <p className="text-gray-700 dark:text-gray-300 text-sm lg:text-base">
                   See the top players and track your progress in the global rankings
                 </p>
               </div>
@@ -83,8 +83,8 @@ export default function Home() {
           transition={{ delay: 0.5 }}
           className="mt-12 lg:mt-16 text-center max-w-3xl"
         >
-          <h3 className="text-lg lg:text-xl font-semibold mb-4 text-gray-200">What is Natural Deduction?</h3>
-          <p className="text-gray-400 text-sm lg:text-base leading-relaxed">
+          <h3 className="text-lg lg:text-xl font-semibold mb-4">What is Natural Deduction?</h3>
+          <p className="text-gray-700 dark:text-gray-400 text-sm lg:text-base leading-relaxed">
             Natural deduction is a formal proof system in logic where you derive conclusions from premises using logical rules. 
             In LogicArena, you&apos;ll learn to construct proofs using inference rules like modus ponens, modus tollens, 
             and many others. Whether you&apos;re a student, educator, or logic enthusiast, LogicArena provides an engaging 

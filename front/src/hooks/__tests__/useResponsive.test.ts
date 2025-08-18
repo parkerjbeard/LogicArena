@@ -1,6 +1,16 @@
 import { renderHook, act } from '@testing-library/react';
 import { useBreakpoint, useAdaptiveClick, useSwipeGesture } from '../useResponsive';
 
+// Mock InputContext
+let mockInputMethod = 'mouse';
+jest.mock('@/contexts/InputContext', () => ({
+  useInput: () => ({
+    inputMethod: mockInputMethod,
+    deviceType: 'mobile',
+    updateInputMethod: jest.fn(),
+  }),
+}));
+
 // Mock window.matchMedia
 const mockMatchMedia = jest.fn();
 Object.defineProperty(window, 'matchMedia', {
@@ -8,21 +18,19 @@ Object.defineProperty(window, 'matchMedia', {
   value: mockMatchMedia,
 });
 
-// Mock window dimensions
-const mockWindowDimensions = {
-  innerWidth: 1024,
-  innerHeight: 768,
+// Helper to set window dimensions
+const setWindowDimensions = (width: number, height: number = 768) => {
+  Object.defineProperty(window, 'innerWidth', {
+    writable: true,
+    configurable: true,
+    value: width,
+  });
+  Object.defineProperty(window, 'innerHeight', {
+    writable: true,
+    configurable: true,
+    value: height,
+  });
 };
-
-Object.defineProperty(window, 'innerWidth', {
-  writable: true,
-  value: mockWindowDimensions.innerWidth,
-});
-
-Object.defineProperty(window, 'innerHeight', {
-  writable: true,
-  value: mockWindowDimensions.innerHeight,
-});
 
 describe('useBreakpoint', () => {
   beforeEach(() => {
@@ -35,21 +43,8 @@ describe('useBreakpoint', () => {
   });
 
   it('returns desktop breakpoint by default', () => {
-    // Mock desktop breakpoint
-    mockMatchMedia.mockImplementation((query) => {
-      if (query === '(min-width: 1024px)') {
-        return {
-          matches: true,
-          addEventListener: jest.fn(),
-          removeEventListener: jest.fn(),
-        };
-      }
-      return {
-        matches: false,
-        addEventListener: jest.fn(),
-        removeEventListener: jest.fn(),
-      };
-    });
+    // Set window width for lg breakpoint (768 <= width < 1024)
+    setWindowDimensions(800);
 
     const { result } = renderHook(() => useBreakpoint());
 
@@ -60,21 +55,8 @@ describe('useBreakpoint', () => {
   });
 
   it('returns tablet breakpoint for medium screens', () => {
-    // Mock tablet breakpoint
-    mockMatchMedia.mockImplementation((query) => {
-      if (query === '(min-width: 768px)') {
-        return {
-          matches: true,
-          addEventListener: jest.fn(),
-          removeEventListener: jest.fn(),
-        };
-      }
-      return {
-        matches: false,
-        addEventListener: jest.fn(),
-        removeEventListener: jest.fn(),
-      };
-    });
+    // Set window width for md breakpoint (640 <= width < 768)
+    setWindowDimensions(700);
 
     const { result } = renderHook(() => useBreakpoint());
 
@@ -85,14 +67,8 @@ describe('useBreakpoint', () => {
   });
 
   it('returns mobile breakpoint for small screens', () => {
-    // Mock mobile breakpoint
-    mockMatchMedia.mockImplementation((query) => {
-      return {
-        matches: false,
-        addEventListener: jest.fn(),
-        removeEventListener: jest.fn(),
-      };
-    });
+    // Set window width for sm breakpoint (475 <= width < 640)
+    setWindowDimensions(500);
 
     const { result } = renderHook(() => useBreakpoint());
 
@@ -103,45 +79,37 @@ describe('useBreakpoint', () => {
   });
 
   it('updates breakpoint when screen size changes', () => {
-    const mockAddEventListener = jest.fn();
-    const mockRemoveEventListener = jest.fn();
-
-    mockMatchMedia.mockImplementation((query) => {
-      if (query === '(min-width: 1024px)') {
-        return {
-          matches: true,
-          addEventListener: mockAddEventListener,
-          removeEventListener: mockRemoveEventListener,
-        };
-      }
-      return {
-        matches: false,
-        addEventListener: mockAddEventListener,
-        removeEventListener: mockRemoveEventListener,
-      };
-    });
+    // Start with lg breakpoint
+    setWindowDimensions(800);
 
     const { result } = renderHook(() => useBreakpoint());
-
     expect(result.current.breakpoint).toBe('lg');
-    expect(mockAddEventListener).toHaveBeenCalledWith('change', expect.any(Function));
+
+    // Simulate resize to mobile
+    act(() => {
+      setWindowDimensions(400);
+      window.dispatchEvent(new Event('resize'));
+    });
+
+    expect(result.current.breakpoint).toBe('xs');
+    expect(result.current.isMobile).toBe(true);
   });
 
   it('cleans up event listeners on unmount', () => {
-    const mockAddEventListener = jest.fn();
-    const mockRemoveEventListener = jest.fn();
+    const addEventListenerSpy = jest.spyOn(window, 'addEventListener');
+    const removeEventListenerSpy = jest.spyOn(window, 'removeEventListener');
 
-    mockMatchMedia.mockReturnValue({
-      matches: false,
-      addEventListener: mockAddEventListener,
-      removeEventListener: mockRemoveEventListener,
-    });
-
+    setWindowDimensions(800);
     const { unmount } = renderHook(() => useBreakpoint());
+
+    expect(addEventListenerSpy).toHaveBeenCalledWith('resize', expect.any(Function));
 
     unmount();
 
-    expect(mockRemoveEventListener).toHaveBeenCalledWith('change', expect.any(Function));
+    expect(removeEventListenerSpy).toHaveBeenCalledWith('resize', expect.any(Function));
+
+    addEventListenerSpy.mockRestore();
+    removeEventListenerSpy.mockRestore();
   });
 });
 
@@ -149,6 +117,7 @@ describe('useAdaptiveClick', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    mockInputMethod = 'mouse'; // Reset to mouse for most tests
   });
 
   afterEach(() => {
@@ -166,7 +135,7 @@ describe('useAdaptiveClick', () => {
     expect(result.current.onMouseLeave).toBeDefined();
     expect(result.current.onTouchStart).toBeDefined();
     expect(result.current.onTouchEnd).toBeDefined();
-    expect(result.current.onClick).toBeDefined();
+    expect(result.current.isPressed).toBeDefined();
   });
 
   it('calls onClick on regular click', () => {
@@ -175,26 +144,35 @@ describe('useAdaptiveClick', () => {
 
     const { result } = renderHook(() => useAdaptiveClick(onClick, onLongPress));
 
+    const mockEvent = {} as React.MouseEvent<HTMLElement>;
+
+    // Simulate mousedown and mouseup for a click
     act(() => {
-      result.current.onClick();
+      result.current.onMouseDown?.(mockEvent);
     });
 
-    expect(onClick).toHaveBeenCalled();
+    act(() => {
+      result.current.onMouseUp?.(mockEvent);
+    });
+
+    expect(onClick).toHaveBeenCalledWith(mockEvent);
     expect(onLongPress).not.toHaveBeenCalled();
   });
 
-  it('calls onLongPress on long press', () => {
+  it('calls onLongPress on long press for touch input', () => {
+    mockInputMethod = 'touch'; // Set to touch for long press to work
     const onClick = jest.fn();
     const onLongPress = jest.fn();
 
     const { result } = renderHook(() => useAdaptiveClick(onClick, onLongPress));
 
     act(() => {
-      result.current.onMouseDown();
+      const mockEvent = {} as React.TouchEvent<HTMLElement>;
+      result.current.onTouchStart(mockEvent);
     });
 
     act(() => {
-      jest.advanceTimersByTime(600); // Long press threshold
+      jest.advanceTimersByTime(600); // Long press threshold (default is 500ms)
     });
 
     expect(onLongPress).toHaveBeenCalled();
@@ -208,7 +186,8 @@ describe('useAdaptiveClick', () => {
     const { result } = renderHook(() => useAdaptiveClick(onClick, onLongPress));
 
     act(() => {
-      result.current.onMouseDown();
+      const mockEvent = {} as React.MouseEvent<HTMLElement>;
+      result.current.onMouseDown?.(mockEvent);
     });
 
     act(() => {
@@ -216,7 +195,8 @@ describe('useAdaptiveClick', () => {
     });
 
     act(() => {
-      result.current.onMouseUp();
+      const mockEvent = {} as React.MouseEvent<HTMLElement>;
+      result.current.onMouseUp?.(mockEvent);
     });
 
     act(() => {
@@ -233,11 +213,12 @@ describe('useAdaptiveClick', () => {
     const { result } = renderHook(() => useAdaptiveClick(onClick, onLongPress));
 
     act(() => {
-      result.current.onMouseDown();
+      const mockEvent = {} as React.MouseEvent<HTMLElement>;
+      result.current.onMouseDown?.(mockEvent);
     });
 
     act(() => {
-      result.current.onMouseLeave();
+      result.current.onMouseLeave?.();
     });
 
     act(() => {
@@ -248,13 +229,15 @@ describe('useAdaptiveClick', () => {
   });
 
   it('handles touch events correctly', () => {
+    mockInputMethod = 'touch'; // Set to touch for long press to work
     const onClick = jest.fn();
     const onLongPress = jest.fn();
 
     const { result } = renderHook(() => useAdaptiveClick(onClick, onLongPress));
 
     act(() => {
-      result.current.onTouchStart();
+      const mockEvent = {} as React.TouchEvent<HTMLElement>;
+      result.current.onTouchStart(mockEvent);
     });
 
     act(() => {
@@ -271,11 +254,13 @@ describe('useAdaptiveClick', () => {
     const { result } = renderHook(() => useAdaptiveClick(onClick, onLongPress));
 
     act(() => {
-      result.current.onTouchStart();
+      const mockEvent = {} as React.TouchEvent<HTMLElement>;
+      result.current.onTouchStart(mockEvent);
     });
 
     act(() => {
-      result.current.onTouchEnd();
+      const mockEvent = {} as React.TouchEvent<HTMLElement>;
+      result.current.onTouchEnd(mockEvent);
     });
 
     act(() => {
@@ -291,7 +276,8 @@ describe('useAdaptiveClick', () => {
     const { result } = renderHook(() => useAdaptiveClick(onClick));
 
     act(() => {
-      result.current.onMouseDown();
+      const mockEvent = {} as React.MouseEvent<HTMLElement>;
+      result.current.onMouseDown?.(mockEvent);
     });
 
     act(() => {
@@ -338,16 +324,24 @@ describe('useSwipeGesture', () => {
     const element = mockRef.current!;
 
     // Simulate touch start
-    const touchStart = new TouchEvent('touchstart', {
-      touches: [{ clientX: 100, clientY: 100 } as Touch],
+    act(() => {
+      const touchStart = new Event('touchstart');
+      Object.defineProperty(touchStart, 'touches', {
+        value: [{ clientX: 100, clientY: 100 }],
+        writable: false,
+      });
+      element.dispatchEvent(touchStart);
     });
-    element.dispatchEvent(touchStart);
 
     // Simulate touch end (swipe left)
-    const touchEnd = new TouchEvent('touchend', {
-      changedTouches: [{ clientX: 50, clientY: 100 } as Touch],
+    act(() => {
+      const touchEnd = new Event('touchend');
+      Object.defineProperty(touchEnd, 'changedTouches', {
+        value: [{ clientX: 20, clientY: 100 }], // Swipe 80px left
+        writable: false,
+      });
+      element.dispatchEvent(touchEnd);
     });
-    element.dispatchEvent(touchEnd);
 
     expect(handlers.onSwipeLeft).toHaveBeenCalled();
     expect(handlers.onSwipeRight).not.toHaveBeenCalled();
@@ -366,16 +360,24 @@ describe('useSwipeGesture', () => {
     const element = mockRef.current!;
 
     // Simulate touch start
-    const touchStart = new TouchEvent('touchstart', {
-      touches: [{ clientX: 100, clientY: 100 } as Touch],
+    act(() => {
+      const touchStart = new Event('touchstart');
+      Object.defineProperty(touchStart, 'touches', {
+        value: [{ clientX: 100, clientY: 100 }],
+        writable: false,
+      });
+      element.dispatchEvent(touchStart);
     });
-    element.dispatchEvent(touchStart);
 
     // Simulate touch end (swipe right)
-    const touchEnd = new TouchEvent('touchend', {
-      changedTouches: [{ clientX: 150, clientY: 100 } as Touch],
+    act(() => {
+      const touchEnd = new Event('touchend');
+      Object.defineProperty(touchEnd, 'changedTouches', {
+        value: [{ clientX: 180, clientY: 100 }], // Swipe 80px right
+        writable: false,
+      });
+      element.dispatchEvent(touchEnd);
     });
-    element.dispatchEvent(touchEnd);
 
     expect(handlers.onSwipeRight).toHaveBeenCalled();
     expect(handlers.onSwipeLeft).not.toHaveBeenCalled();
@@ -394,16 +396,24 @@ describe('useSwipeGesture', () => {
     const element = mockRef.current!;
 
     // Simulate touch start
-    const touchStart = new TouchEvent('touchstart', {
-      touches: [{ clientX: 100, clientY: 100 } as Touch],
+    act(() => {
+      const touchStart = new Event('touchstart');
+      Object.defineProperty(touchStart, 'touches', {
+        value: [{ clientX: 100, clientY: 100 }],
+        writable: false,
+      });
+      element.dispatchEvent(touchStart);
     });
-    element.dispatchEvent(touchStart);
 
     // Simulate touch end (swipe up)
-    const touchEnd = new TouchEvent('touchend', {
-      changedTouches: [{ clientX: 100, clientY: 50 } as Touch],
+    act(() => {
+      const touchEnd = new Event('touchend');
+      Object.defineProperty(touchEnd, 'changedTouches', {
+        value: [{ clientX: 100, clientY: 20 }], // Swipe 80px up
+        writable: false,
+      });
+      element.dispatchEvent(touchEnd);
     });
-    element.dispatchEvent(touchEnd);
 
     expect(handlers.onSwipeUp).toHaveBeenCalled();
   });
@@ -421,16 +431,24 @@ describe('useSwipeGesture', () => {
     const element = mockRef.current!;
 
     // Simulate touch start
-    const touchStart = new TouchEvent('touchstart', {
-      touches: [{ clientX: 100, clientY: 100 } as Touch],
+    act(() => {
+      const touchStart = new Event('touchstart');
+      Object.defineProperty(touchStart, 'touches', {
+        value: [{ clientX: 100, clientY: 100 }],
+        writable: false,
+      });
+      element.dispatchEvent(touchStart);
     });
-    element.dispatchEvent(touchStart);
 
     // Simulate touch end (swipe down)
-    const touchEnd = new TouchEvent('touchend', {
-      changedTouches: [{ clientX: 100, clientY: 150 } as Touch],
+    act(() => {
+      const touchEnd = new Event('touchend');
+      Object.defineProperty(touchEnd, 'changedTouches', {
+        value: [{ clientX: 100, clientY: 180 }], // Swipe 80px down
+        writable: false,
+      });
+      element.dispatchEvent(touchEnd);
     });
-    element.dispatchEvent(touchEnd);
 
     expect(handlers.onSwipeDown).toHaveBeenCalled();
   });
@@ -448,16 +466,24 @@ describe('useSwipeGesture', () => {
     const element = mockRef.current!;
 
     // Simulate touch start
-    const touchStart = new TouchEvent('touchstart', {
-      touches: [{ clientX: 100, clientY: 100 } as Touch],
+    act(() => {
+      const touchStart = new Event('touchstart');
+      Object.defineProperty(touchStart, 'touches', {
+        value: [{ clientX: 100, clientY: 100 }],
+        writable: false,
+      });
+      element.dispatchEvent(touchStart);
     });
-    element.dispatchEvent(touchStart);
 
     // Simulate small movement (should not trigger swipe)
-    const touchEnd = new TouchEvent('touchend', {
-      changedTouches: [{ clientX: 105, clientY: 100 } as Touch],
+    act(() => {
+      const touchEnd = new Event('touchend');
+      Object.defineProperty(touchEnd, 'changedTouches', {
+        value: [{ clientX: 105, clientY: 100 }], // Small 5px movement
+        writable: false,
+      });
+      element.dispatchEvent(touchEnd);
     });
-    element.dispatchEvent(touchEnd);
 
     expect(handlers.onSwipeLeft).not.toHaveBeenCalled();
     expect(handlers.onSwipeRight).not.toHaveBeenCalled();

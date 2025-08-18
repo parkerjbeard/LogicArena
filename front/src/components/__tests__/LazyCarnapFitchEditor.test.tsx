@@ -1,6 +1,6 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
-import { act } from 'react-dom/test-utils';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act } from 'react';
 import LazyCarnapFitchEditor from '../LazyCarnapFitchEditor';
 
 // Mock next/dynamic
@@ -26,7 +26,7 @@ jest.mock('next/dynamic', () => ({
             <div data-testid="carnap-fitch-editor" className="carnap-fitch-editor-container">
               {showSyntaxGuide && (
                 <div data-testid="syntax-guide-header" className="bg-gray-800/50">
-                  <span>Carnap-Compatible Fitch Notation</span>
+                  <span>Enhanced Carnap-Compatible Fitch Notation</span>
                   <button data-testid="toggle-guide">Show Syntax Guide</button>
                 </div>
               )}
@@ -93,15 +93,15 @@ describe('LazyCarnapFitchEditor', () => {
     render(<LazyCarnapFitchEditor {...defaultProps} />);
     
     // Check for Carnap-specific skeleton elements
-    const container = screen.getByTestId(/carnap-fitch-editor-container/i);
+    const container = document.querySelector('.carnap-fitch-editor-container');
     expect(container).toBeInTheDocument();
     
     // Should show the syntax guide header in skeleton
     expect(screen.getByTestId('info-icon')).toBeInTheDocument();
-    expect(screen.getByText('Carnap-Compatible Fitch Notation')).toBeInTheDocument();
+    expect(screen.getByText('Enhanced Carnap-Compatible Fitch Notation')).toBeInTheDocument();
     
     // Should have animate-pulse loading indicators
-    const pulsingElements = screen.getAllByTestId(/animate-pulse/i);
+    const pulsingElements = document.querySelectorAll('.animate-pulse');
     expect(pulsingElements.length).toBeGreaterThan(0);
   });
 
@@ -124,7 +124,7 @@ describe('LazyCarnapFitchEditor', () => {
     });
     
     expect(screen.getByTestId('syntax-guide-header')).toBeInTheDocument();
-    expect(screen.getByText('Carnap-Compatible Fitch Notation')).toBeInTheDocument();
+    expect(screen.getByText('Enhanced Carnap-Compatible Fitch Notation')).toBeInTheDocument();
     expect(screen.getByTestId('toggle-guide')).toBeInTheDocument();
   });
 
@@ -174,19 +174,19 @@ describe('LazyCarnapFitchEditor', () => {
     render(<LazyCarnapFitchEditor {...defaultProps} theme="dark" />);
     
     // Check for dark theme classes in skeleton
-    const darkElements = screen.getAllByTestId(/bg-gray-800|bg-gray-700/i);
-    expect(darkElements.length).toBeGreaterThan(0);
+    const darkBg = document.querySelector('.bg-gray-800, .bg-gray-700, .bg-gray-900');
+    expect(darkBg).toBeInTheDocument();
   });
 
   it('should have correct loading skeleton structure', () => {
     render(<LazyCarnapFitchEditor {...defaultProps} />);
     
     // Should have header section
-    const header = screen.getByTestId(/bg-gray-800\/50.*border.*rounded-t-lg/i);
+    const header = document.querySelector('[class*="bg-gray-800/50"]');
     expect(header).toBeInTheDocument();
     
     // Should have main editor section
-    const editorSection = screen.getByTestId(/border.*rounded-b-lg.*animate-pulse/i);
+    const editorSection = document.querySelector('.animate-pulse');
     expect(editorSection).toBeInTheDocument();
   });
 
@@ -219,10 +219,7 @@ describe('LazyCarnapFitchEditor', () => {
     const textarea = screen.getByTestId('editor-textarea');
     const newProof = 'P :PR\nQ :PR\nP&Q :&I 1,2';
     
-    act(() => {
-      (textarea as HTMLTextAreaElement).value = newProof;
-      textarea.dispatchEvent(new Event('change', { bubbles: true }));
-    });
+    fireEvent.change(textarea, { target: { value: newProof } });
     
     expect(defaultProps.onChange).toHaveBeenCalledWith(newProof);
   });

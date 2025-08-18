@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { userAPI } from '@/lib/api';
 import { motion } from 'framer-motion';
@@ -61,7 +61,7 @@ interface Achievement {
   percentage: number;
 }
 
-export default function ProfilePage() {
+function ProfileContent() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -71,13 +71,7 @@ export default function ProfilePage() {
   const userId = searchParams.get('userId') || authUserId?.toString() || '';
   const { isMobile } = useBreakpoint();
 
-  useEffect(() => {
-    if (userId && !authLoading) {
-      fetchProfile();
-    }
-  }, [userId, authLoading]);
-
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     try {
       setLoading(true);
       const profile = await userAPI.getUserProfile(parseInt(userId));
@@ -88,7 +82,33 @@ export default function ProfilePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId]);
+
+  useEffect(() => {
+    // If auth is still loading, wait
+    if (authLoading) return;
+    
+    // If we have a userId (from URL or auth), fetch the profile
+    if (userId) {
+      fetchProfile();
+    } else {
+      // No userId available - show default or demo profile
+      // For now, load user ID 1 as a demo
+      const loadDemoProfile = async () => {
+        try {
+          setLoading(true);
+          const profile = await userAPI.getUserProfile(1);
+          setProfile(profile);
+        } catch (err) {
+          setError('Failed to load profile. Please log in to view your profile.');
+          console.error(err);
+        } finally {
+          setLoading(false);
+        }
+      };
+      loadDemoProfile();
+    }
+  }, [userId, authLoading, fetchProfile]);
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -128,7 +148,7 @@ export default function ProfilePage() {
         >
           <div className="flex flex-col items-center text-center">
             {/* Avatar */}
-            <div className="w-32 h-32 bg-gradient-to-br from-gray-700 to-gray-800 rounded-full flex items-center justify-center text-5xl font-bold text-gray-200 mb-6 shadow-xl">
+            <div className="w-32 h-32 surface border border-default rounded-full flex items-center justify-center text-5xl font-bold mb-6 shadow-xl">
               {profile.avatar_url ? (
                 <img src={profile.avatar_url} alt={profile.handle} className="w-full h-full rounded-full object-cover" />
               ) : (
@@ -137,30 +157,30 @@ export default function ProfilePage() {
             </div>
 
             {/* User Info */}
-            <h1 className="text-4xl font-bold text-white mb-2">{profile.handle}</h1>
-            <p className="text-xl text-gray-300 mb-3">{profile.rank_title}</p>
+            <h1 className="text-4xl font-bold mb-2">{profile.handle}</h1>
+            <p className="text-xl text-gray-700 dark:text-gray-300 mb-3">{profile.rank_title}</p>
             {profile.bio && (
-              <p className="text-gray-400 max-w-md mb-6">{profile.bio}</p>
+              <p className="text-gray-700 dark:text-gray-400 max-w-md mb-6">{profile.bio}</p>
             )}
 
             {/* Level Progress - Wider and cleaner */}
             <div className="w-full max-w-2xl mb-8">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-300">Level {profile.level}</span>
-                <span className="text-sm font-medium text-gray-300">Level {profile.level + 1}</span>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Level {profile.level}</span>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Level {profile.level + 1}</span>
               </div>
-              <div className="bg-gray-800 rounded-full h-4 overflow-hidden shadow-inner">
+              <div className="surface rounded-full h-4 overflow-hidden shadow-inner border border-default">
                 <motion.div 
                   className="bg-gradient-to-r from-blue-500 to-blue-400 h-full relative"
                   initial={{ width: 0 }}
                   animate={{ width: `${profile.xp_progress}%` }}
                   transition={{ duration: 1.5, ease: "easeOut" }}
                 >
-                  <div className="absolute inset-0 bg-white/20 animate-pulse" />
+                  <div className="absolute inset-0 bg-white/20 dark:bg-white/10 animate-pulse" />
                 </motion.div>
               </div>
               <div className="text-center mt-2">
-                <span className="text-sm text-gray-400">{profile.experience_points} / {profile.next_level_xp} XP</span>
+                <span className="text-sm text-gray-700 dark:text-gray-400">{profile.experience_points} / {profile.next_level_xp} XP</span>
               </div>
             </div>
 
@@ -175,16 +195,16 @@ export default function ProfilePage() {
               {/* Secondary stats */}
               <div className="flex flex-wrap justify-center gap-16">
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-green-400 mb-1">{profile.unique_puzzles_solved}</div>
-                  <div className="text-sm text-gray-400">Puzzles Solved</div>
+                  <div className="text-3xl font-bold text-green-600 dark:text-green-400 mb-1">{profile.unique_puzzles_solved}</div>
+                  <div className="text-sm text-gray-700 dark:text-gray-400">Puzzles Solved</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-yellow-400 mb-1">{profile.streak_days}</div>
-                  <div className="text-sm text-gray-400">Day Streak</div>
+                  <div className="text-3xl font-bold text-yellow-600 dark:text-yellow-400 mb-1">{profile.streak_days}</div>
+                  <div className="text-sm text-gray-700 dark:text-gray-400">Day Streak</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-purple-400 mb-1">{formatTime(profile.total_practice_time)}</div>
-                  <div className="text-sm text-gray-400">Practice Time</div>
+                  <div className="text-3xl font-bold text-purple-600 dark:text-purple-400 mb-1">{formatTime(profile.total_practice_time)}</div>
+                  <div className="text-sm text-gray-700 dark:text-gray-400">Practice Time</div>
                 </div>
               </div>
             </div>
@@ -192,16 +212,16 @@ export default function ProfilePage() {
         </motion.div>
 
         {/* Tab Navigation */}
-        <div className="flex justify-center mb-8">
-          <div className="inline-flex bg-gray-800/50 backdrop-blur-sm rounded-lg p-1">
+            <div className="flex justify-center mb-8">
+          <div className="inline-flex surface rounded-lg p-1 border border-default">
             {['overview', 'activity', 'achievements'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab as any)}
                 className={`px-6 py-2 rounded-md transition-all ${
                   activeTab === tab 
-                    ? 'bg-gray-700 text-white' 
-                    : 'text-gray-400 hover:text-gray-300'
+                    ? 'surface border border-default' 
+                    : 'text-gray-600 dark:text-gray-400 hover:opacity-90'
                 }`}
               >
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -425,5 +445,19 @@ export default function ProfilePage() {
         </motion.div>
       </div>
     </ResponsiveContainer>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <Suspense fallback={
+      <ResponsiveContainer>
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-gray-400">Loading profile...</div>
+        </div>
+      </ResponsiveContainer>
+    }>
+      <ProfileContent />
+    </Suspense>
   );
 }

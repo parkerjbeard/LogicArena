@@ -33,10 +33,17 @@ export const TutorialFramework: React.FC<TutorialFrameworkProps> = ({
     message: string;
   } | null>(null);
 
-  const currentStepData = steps[currentStep];
-  const progress = ((currentStep + 1) / steps.length) * 100;
+  const hasSteps = steps && steps.length > 0;
+  const currentStepData = hasSteps ? steps[currentStep] : undefined;
+  const progress = hasSteps ? ((currentStep + 1) / steps.length) * 100 : 0;
 
   const handleNext = useCallback(() => {
+    if (!hasSteps) {
+      // No steps to advance through; treat as immediately complete
+      onComplete();
+      onExit();
+      return;
+    }
     if (currentStep < steps.length - 1) {
       setCurrentStep(prev => prev + 1);
       setShowHint(false);
@@ -46,30 +53,32 @@ export const TutorialFramework: React.FC<TutorialFrameworkProps> = ({
       onComplete();
       onExit();
     }
-  }, [currentStep, steps.length, onComplete, onExit]);
+  }, [currentStep, steps.length, onComplete, onExit, hasSteps]);
 
   const handlePrevious = useCallback(() => {
+    if (!hasSteps) return;
     if (currentStep > 0) {
       setCurrentStep(prev => prev - 1);
       setShowHint(false);
       setValidationMessage(null);
     }
-  }, [currentStep]);
+  }, [currentStep, hasSteps]);
 
   const handleShowHint = useCallback(() => {
+    if (!hasSteps || !currentStepData?.hint) return;
     setShowHint(true);
     setTutorialState(prev => ({
       ...prev,
       hintsUsed: [...prev.hintsUsed, currentStep]
     }));
-  }, [currentStep]);
+  }, [currentStep, hasSteps, currentStepData]);
 
   const validateStep = useCallback(async (userInput: any) => {
     setIsValidating(true);
     
     try {
       // Call step validation if provided
-      if (currentStepData.validate) {
+      if (currentStepData?.validate) {
         const isValid = await currentStepData.validate(userInput);
         
         if (isValid) {
@@ -104,6 +113,23 @@ export const TutorialFramework: React.FC<TutorialFrameworkProps> = ({
     }
   }, [currentStepData, currentStep, handleNext]);
 
+  // Auto-complete steps without validation
+  useEffect(() => {
+    if (!hasSteps || !currentStepData) return;
+    // If the current step doesn't have validation, mark it as completed
+    if (!currentStepData.validate) {
+      setTutorialState(prev => {
+        if (!prev.completedSteps.includes(currentStep)) {
+          return {
+            ...prev,
+            completedSteps: [...prev.completedSteps, currentStep]
+          };
+        }
+        return prev;
+      });
+    }
+  }, [currentStep, currentStepData, hasSteps]);
+
   // Keyboard navigation
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
@@ -132,7 +158,11 @@ export const TutorialFramework: React.FC<TutorialFrameworkProps> = ({
             <div>
               <h2 className="text-2xl font-bold">{title}</h2>
               <p className="text-gray-300 mt-1">
-                Step {currentStep + 1} of {steps.length}: {currentStepData.title}
+                {hasSteps
+                  ? (<>
+                      Step {currentStep + 1} of {steps.length}: {currentStepData?.title}
+                    </>)
+                  : 'No steps available'}
               </p>
             </div>
             <button
@@ -167,16 +197,18 @@ export const TutorialFramework: React.FC<TutorialFrameworkProps> = ({
             >
               {/* Step description */}
               <div className="text-lg">
-                <p className="text-gray-300 leading-relaxed">{currentStepData.description}</p>
+                <p className="text-gray-300 leading-relaxed">
+                  {currentStepData?.description || 'No content for this tutorial.'}
+                </p>
               </div>
 
               {/* Interactive content */}
               <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700/50">
-                {currentStepData.content}
+                {currentStepData?.content || <div className="text-gray-400 text-sm">No interactive content.</div>}
               </div>
 
               {/* Hint section */}
-              {currentStepData.hint && (
+              {currentStepData?.hint && (
                 <div className="mt-6">
                   {!showHint ? (
                     <button
@@ -194,7 +226,7 @@ export const TutorialFramework: React.FC<TutorialFrameworkProps> = ({
                     >
                       <div className="flex items-start gap-3">
                         <Lightbulb className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
-                        <p className="text-sm text-yellow-300">{currentStepData.hint}</p>
+                        <p className="text-sm text-yellow-300">{currentStepData?.hint}</p>
                       </div>
                     </motion.div>
                   )}
@@ -266,15 +298,15 @@ export const TutorialFramework: React.FC<TutorialFrameworkProps> = ({
               ))}
             </div>
 
-            <button
+              <button
               onClick={handleNext}
               disabled={
-                currentStep === steps.length - 1 && 
-                !tutorialState.completedSteps.includes(currentStep)
+                !hasSteps || (currentStep === steps.length - 1 && 
+                !tutorialState.completedSteps.includes(currentStep))
               }
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {currentStep === steps.length - 1 ? 'Complete' : 'Next'}
+              {hasSteps ? (currentStep === steps.length - 1 ? 'Complete' : 'Next') : 'Close'}
               <ChevronRight className="w-5 h-5" />
             </button>
           </div>

@@ -21,11 +21,11 @@ class MockWebSocket {
 
   constructor(url: string) {
     this.url = url;
-    // Simulate connection opening
-    setTimeout(() => {
+    // Simulate async connection opening without scheduling timers
+    Promise.resolve().then(() => {
       this.readyState = MockWebSocket.OPEN;
       this.onopen?.(new Event('open'));
-    }, 0);
+    });
   }
 
   send(data: string) {
@@ -100,6 +100,9 @@ describe('useDuelWebSocket', () => {
   afterEach(() => {
     jest.useRealTimers();
     global.WebSocket = OriginalWebSocket;
+    // Help GC between tests
+    // @ts-ignore
+    mockWebSocket = undefined;
   });
 
   it('should connect to WebSocket with correct URL', async () => {

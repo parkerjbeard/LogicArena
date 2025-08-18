@@ -49,11 +49,13 @@ function TestComponent() {
 }
 
 describe('ToastContext', () => {
-  const user = userEvent.setup();
+  let user: ReturnType<typeof userEvent.setup>;
 
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    // Setup userEvent with fake timers
+    user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
   });
 
   afterEach(() => {
@@ -86,8 +88,9 @@ describe('ToastContext', () => {
     expect(screen.getByText('Success message')).toBeInTheDocument();
     expect(screen.getByTestId('check-circle-icon')).toBeInTheDocument();
 
-    const toast = screen.getByText('Success message').closest('div');
-    expect(toast).toHaveClass('bg-green-800/90');
+    // Find the toast container - it's the div with role="alert"
+    const toast = screen.getByRole('alert');
+    expect(toast).toHaveClass('bg-green-900/20');
   });
 
   it('shows error toast with correct styling', async () => {
@@ -103,8 +106,9 @@ describe('ToastContext', () => {
     expect(screen.getByText('Error message')).toBeInTheDocument();
     expect(screen.getByTestId('alert-circle-icon')).toBeInTheDocument();
 
-    const toast = screen.getByText('Error message').closest('div');
-    expect(toast).toHaveClass('bg-red-800/90');
+    // Find the toast container - it's the div with role="alert"
+    const toast = screen.getByRole('alert');
+    expect(toast).toHaveClass('bg-red-900/20');
   });
 
   it('shows warning toast with correct styling', async () => {
@@ -120,8 +124,9 @@ describe('ToastContext', () => {
     expect(screen.getByText('Warning message')).toBeInTheDocument();
     expect(screen.getByTestId('alert-triangle-icon')).toBeInTheDocument();
 
-    const toast = screen.getByText('Warning message').closest('div');
-    expect(toast).toHaveClass('bg-yellow-800/90');
+    // Find the toast container - it's the div with role="alert"
+    const toast = screen.getByRole('alert');
+    expect(toast).toHaveClass('bg-yellow-900/20');
   });
 
   it('shows info toast with correct styling', async () => {
@@ -137,8 +142,9 @@ describe('ToastContext', () => {
     expect(screen.getByText('Info message')).toBeInTheDocument();
     expect(screen.getByTestId('info-icon')).toBeInTheDocument();
 
-    const toast = screen.getByText('Info message').closest('div');
-    expect(toast).toHaveClass('bg-blue-800/90');
+    // Find the toast container - it's the div with role="alert"
+    const toast = screen.getByRole('alert');
+    expect(toast).toHaveClass('bg-blue-900/20');
   });
 
   it('shows default toast with correct styling', async () => {
@@ -154,8 +160,9 @@ describe('ToastContext', () => {
     expect(screen.getByText('Default message')).toBeInTheDocument();
     expect(screen.getByTestId('info-icon')).toBeInTheDocument();
 
-    const toast = screen.getByText('Default message').closest('div');
-    expect(toast).toHaveClass('bg-gray-800/90');
+    // Find the toast container - it's the div with role="alert"
+    const toast = screen.getByRole('alert');
+    expect(toast).toHaveClass('bg-blue-900/20');
   });
 
   it('renders close button on toast', async () => {
@@ -229,7 +236,7 @@ describe('ToastContext', () => {
     });
   });
 
-  it('replaces existing toast with new one', async () => {
+  it('shows multiple toasts simultaneously', async () => {
     render(
       <ToastProvider>
         <TestComponent />
@@ -244,8 +251,12 @@ describe('ToastContext', () => {
     const errorButton = screen.getByText('Show Error Toast');
     await user.click(errorButton);
 
-    expect(screen.queryByText('Success message')).not.toBeInTheDocument();
+    // Both toasts should be visible
+    expect(screen.getByText('Success message')).toBeInTheDocument();
     expect(screen.getByText('Error message')).toBeInTheDocument();
+    
+    // Should have 2 alerts
+    expect(screen.getAllByRole('alert')).toHaveLength(2);
   });
 
   it('resets timeout when new toast is shown', async () => {
@@ -308,8 +319,9 @@ describe('ToastContext', () => {
     const successButton = screen.getByText('Show Success Toast');
     await user.click(successButton);
 
-    const toastContainer = screen.getByText('Success message').closest('div')?.parentElement;
-    expect(toastContainer).toHaveClass('fixed', 'top-4', 'right-4', 'z-50');
+    // The toast container is the div with role="region" and aria-label="Notifications"
+    const toastContainer = screen.getByRole('region', { name: 'Notifications' });
+    expect(toastContainer).toHaveClass('fixed', 'bottom-4', 'right-4', 'z-50');
   });
 
   it('applies correct toast styling', async () => {
@@ -322,7 +334,8 @@ describe('ToastContext', () => {
     const successButton = screen.getByText('Show Success Toast');
     await user.click(successButton);
 
-    const toast = screen.getByText('Success message').closest('div');
+    // Find the toast itself - it's the div with role="alert"
+    const toast = screen.getByRole('alert');
     expect(toast).toHaveClass('backdrop-blur-sm', 'border', 'rounded-lg', 'shadow-lg');
   });
 
@@ -336,7 +349,8 @@ describe('ToastContext', () => {
     const successButton = screen.getByText('Show Success Toast');
     await user.click(successButton);
 
-    const toast = screen.getByText('Success message').closest('div');
+    // Find the toast itself - it's the div with role="alert"
+    const toast = screen.getByRole('alert');
     expect(toast).toHaveAttribute('role', 'alert');
     expect(toast).toHaveAttribute('aria-live', 'polite');
   });

@@ -1,6 +1,14 @@
 'use client';
 
 import React, { Component, ReactNode } from 'react';
+import { logger } from '@/lib/logger';
+// Sentry is optional
+let sentryCaptureException: ((e: any) => void) | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const Sentry = require('@sentry/nextjs');
+  sentryCaptureException = Sentry.captureException as (e: any) => void;
+} catch {}
 
 interface Props {
   children: ReactNode;
@@ -24,6 +32,12 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
+    // Report to client logger
+    logger.error('React error boundary captured error', { error, errorInfo });
+    // Report to Sentry if available
+    if (sentryCaptureException) {
+      sentryCaptureException(error);
+    }
   }
 
   render() {

@@ -27,6 +27,10 @@ export interface PuzzleSubmissionHistory {
     phi: string;
     difficulty: number;
     best_len: number;
+    category?: string;
+    chapter?: number;
+    nested_depth?: number;
+    rules_required?: string[];
   };
   proof: string;
   verdict: boolean;

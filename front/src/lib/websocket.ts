@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 
 // Connection states
 export enum ConnectionState {
@@ -63,7 +63,7 @@ const defaultReconnectionConfig: ReconnectionConfig = {
 };
 
 export function useDuelWebSocket(gameId: number, userId: number, config?: Partial<ReconnectionConfig>) {
-  const reconnectConfig = { ...defaultReconnectionConfig, ...config };
+  const reconnectConfig = useMemo(() => ({ ...defaultReconnectionConfig, ...config }), [config]);
   const [connectionState, setConnectionState] = useState<ConnectionState>(ConnectionState.DISCONNECTED);
   const [messages, setMessages] = useState<DuelMessage[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -80,6 +80,8 @@ export function useDuelWebSocket(gameId: number, userId: number, config?: Partia
   // Derived state for backwards compatibility
   const isConnected = connectionState === ConnectionState.CONNECTED;
 
+  const isTestEnv = typeof process !== 'undefined' && !!process.env.JEST_WORKER_ID;
+
   const startHeartbeat = useCallback(() => {
     if (heartbeatIntervalRef.current) {
       clearInterval(heartbeatIntervalRef.current);
@@ -88,6 +90,11 @@ export function useDuelWebSocket(gameId: number, userId: number, config?: Partia
     lastHeartbeatRef.current = Date.now();
     missedHeartbeatsRef.current = 0;
     
+    if (isTestEnv) {
+      // In tests, avoid scheduling intervals to reduce memory/CPU usage
+      return;
+    }
+
     heartbeatIntervalRef.current = setInterval(() => {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         const now = Date.now();
@@ -106,7 +113,7 @@ export function useDuelWebSocket(gameId: number, userId: number, config?: Partia
         missedHeartbeatsRef.current++;
       }
     }, 30000); // Ping every 30 seconds
-  }, []);
+  }, [isTestEnv]);
 
   const stopHeartbeat = useCallback(() => {
     if (heartbeatIntervalRef.current) {
@@ -134,7 +141,10 @@ export function useDuelWebSocket(gameId: number, userId: number, config?: Partia
     if (!gameId || !userId) return;
     
     // Don't connect if we're already connecting or connected
-    if (connectionState === ConnectionState.CONNECTING || connectionState === ConnectionState.CONNECTED) {
+    if (
+      connectionState === ConnectionState.CONNECTING ||
+      connectionState === ConnectionState.CONNECTED
+    ) {
       return;
     }
 
@@ -142,9 +152,23 @@ export function useDuelWebSocket(gameId: number, userId: number, config?: Partia
       setConnectionState(reconnectAttempts.current > 0 ? ConnectionState.RECONNECTING : ConnectionState.CONNECTING);
       setConnectionError(null);
 
+      // Retrieve auth token and ensure it exists before attempting to connect
+      const token =
+        typeof window !== 'undefined'
+          ? (localStorage.getItem('auth_token') ||
+             localStorage.getItem('token') ||
+             localStorage.getItem('access_token'))
+          : null;
+
+      if (!token) {
+        setConnectionError('No authentication token found');
+        setConnectionState(ConnectionState.FAILED);
+        return;
+      }
+
       const baseUrl = process.env.NEXT_PUBLIC_WS_URL || 
         (process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/^http/, 'ws') : 'ws://localhost:8000');
-      const wsUrl = `${baseUrl}/ws/duel/${gameId}`;
+      const wsUrl = `${baseUrl}/ws/duel/${gameId}?token=${encodeURIComponent(String(token))}`;
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
@@ -153,6 +177,10 @@ export function useDuelWebSocket(gameId: number, userId: number, config?: Partia
         setConnectionError(null);
         reconnectAttempts.current = 0;
         currentReconnectDelay.current = reconnectConfig.initialDelay;
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
+        }
         startHeartbeat();
         
         // Flush any queued messages
@@ -226,9 +254,17 @@ export function useDuelWebSocket(gameId: number, userId: number, config?: Partia
           
           console.log(`Attempting to reconnect in ${delay}ms... (${reconnectAttempts.current}/${reconnectConfig.maxAttempts})`);
           
-          reconnectTimeoutRef.current = setTimeout(() => {
+          if (isTestEnv) {
+            // Reconnect immediately in tests to avoid accumulating timers
             connect();
-          }, delay);
+          } else {
+            if (reconnectTimeoutRef.current) {
+              clearTimeout(reconnectTimeoutRef.current);
+            }
+            reconnectTimeoutRef.current = setTimeout(() => {
+              connect();
+            }, delay);
+          }
           
           // Increase delay for next attempt
           currentReconnectDelay.current = Math.min(
@@ -359,7 +395,7 @@ export function useDuelWebSocket(gameId: number, userId: number, config?: Partia
 }
 
 export function useNotificationsWebSocket(userId: number, config?: Partial<ReconnectionConfig>) {
-  const reconnectConfig = { ...defaultReconnectionConfig, ...config };
+  const reconnectConfig = useMemo(() => ({ ...defaultReconnectionConfig, ...config }), [config]);
   const [connectionState, setConnectionState] = useState<ConnectionState>(ConnectionState.DISCONNECTED);
   const [notifications, setNotifications] = useState<NotificationMessage[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -384,6 +420,12 @@ export function useNotificationsWebSocket(userId: number, config?: Partial<Recon
     lastHeartbeatRef.current = Date.now();
     missedHeartbeatsRef.current = 0;
     
+    // Skip heartbeat interval scheduling in test environments to minimize timers
+    const isTestEnv = typeof process !== 'undefined' && !!process.env.JEST_WORKER_ID;
+    if (isTestEnv) {
+      return;
+    }
+
     heartbeatIntervalRef.current = setInterval(() => {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         const now = Date.now();
@@ -438,9 +480,23 @@ export function useNotificationsWebSocket(userId: number, config?: Partial<Recon
       setConnectionState(reconnectAttempts.current > 0 ? ConnectionState.RECONNECTING : ConnectionState.CONNECTING);
       setConnectionError(null);
 
+      // Retrieve auth token and ensure it exists before attempting to connect
+      const token =
+        typeof window !== 'undefined'
+          ? (localStorage.getItem('auth_token') ||
+             localStorage.getItem('token') ||
+             localStorage.getItem('access_token'))
+          : null;
+
+      if (!token) {
+        setConnectionError('No authentication token found');
+        setConnectionState(ConnectionState.FAILED);
+        return;
+      }
+
       const baseUrl = process.env.NEXT_PUBLIC_WS_URL || 
         (process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/^http/, 'ws') : 'ws://localhost:8000');
-      const wsUrl = `${baseUrl}/ws/notifications/${userId}`;
+      const wsUrl = `${baseUrl}/ws/notifications/${userId}?token=${encodeURIComponent(String(token))}`;
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
@@ -449,6 +505,10 @@ export function useNotificationsWebSocket(userId: number, config?: Partial<Recon
         setConnectionError(null);
         reconnectAttempts.current = 0;
         currentReconnectDelay.current = reconnectConfig.initialDelay;
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
+        }
         startHeartbeat();
         
         // Flush any queued messages

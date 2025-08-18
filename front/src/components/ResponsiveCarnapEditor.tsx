@@ -231,15 +231,15 @@ const ResponsiveCarnapEditor: React.FC<ResponsiveCarnapEditorProps> = ({
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      className={`${isMobile ? 'fixed inset-0 z-50 bg-gray-900' : 'absolute right-0 top-0 w-96 max-h-96'} 
-        bg-gray-800 rounded-lg shadow-xl overflow-hidden`}
+      className={`${isMobile ? 'fixed inset-0 z-50 bg-white dark:bg-gray-900' : 'absolute right-0 top-0 w-96 max-h-96'} 
+        bg-gray-100 dark:bg-gray-800 rounded-lg shadow-xl overflow-hidden`}
     >
       <div className={`p-4 ${isMobile ? 'safe-top' : ''}`}>
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">Carnap Syntax Guide</h3>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Carnap Syntax Guide</h3>
           <button
             onClick={() => setShowGuide(false)}
-            className="p-1 hover:bg-gray-700 rounded"
+            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
           >
             <XMarkIcon className="w-5 h-5" />
           </button>
@@ -247,56 +247,56 @@ const ResponsiveCarnapEditor: React.FC<ResponsiveCarnapEditorProps> = ({
         
         <div className={`space-y-4 ${isMobile ? 'h-screen-safe overflow-y-auto pb-20' : 'max-h-80 overflow-y-auto'}`}>
           <div>
-            <h4 className="font-semibold mb-2">Logical Symbols</h4>
+            <h4 className="font-semibold mb-2 text-gray-900 dark:text-gray-100">Logical Symbols</h4>
             <div className="space-y-1 text-sm">
               <div className="flex justify-between font-mono">
-                <span>→ or -{`>`}</span>
-                <span className="text-gray-400">Implication</span>
+                <span className="text-gray-900 dark:text-gray-200">→ or -{`>`}</span>
+                <span className="text-gray-600 dark:text-gray-400">Implication</span>
               </div>
               <div className="flex justify-between font-mono">
-                <span>∧ or /\\ or {`&`}</span>
-                <span className="text-gray-400">Conjunction</span>
+                <span className="text-gray-900 dark:text-gray-200">∧ or /\\ or {`&`}</span>
+                <span className="text-gray-600 dark:text-gray-400">Conjunction</span>
               </div>
               <div className="flex justify-between font-mono">
-                <span>∨ or \\/ or |</span>
-                <span className="text-gray-400">Disjunction</span>
+                <span className="text-gray-900 dark:text-gray-200">∨ or \\/ or |</span>
+                <span className="text-gray-600 dark:text-gray-400">Disjunction</span>
               </div>
               <div className="flex justify-between font-mono">
-                <span>¬ or ~ or -</span>
-                <span className="text-gray-400">Negation</span>
+                <span className="text-gray-900 dark:text-gray-200">¬ or ~ or -</span>
+                <span className="text-gray-600 dark:text-gray-400">Negation</span>
               </div>
               <div className="flex justify-between font-mono">
-                <span>↔ or {`<->`}</span>
-                <span className="text-gray-400">Biconditional</span>
+                <span className="text-gray-900 dark:text-gray-200">↔ or {`<->`}</span>
+                <span className="text-gray-600 dark:text-gray-400">Biconditional</span>
               </div>
             </div>
           </div>
           
           <div>
-            <h4 className="font-semibold mb-2">Common Rules</h4>
+            <h4 className="font-semibold mb-2 text-gray-900 dark:text-gray-100">Common Rules</h4>
             <div className="space-y-1 text-sm">
               <div className="flex justify-between font-mono">
-                <span>:PR</span>
-                <span className="text-gray-400">Premise</span>
+                <span className="text-gray-900 dark:text-gray-200">:PR</span>
+                <span className="text-gray-600 dark:text-gray-400">Premise</span>
               </div>
               <div className="flex justify-between font-mono">
-                <span>:AS</span>
-                <span className="text-gray-400">Assumption</span>
+                <span className="text-gray-900 dark:text-gray-200">:AS</span>
+                <span className="text-gray-600 dark:text-gray-400">Assumption</span>
               </div>
               <div className="flex justify-between font-mono">
-                <span>:MP 1,2</span>
-                <span className="text-gray-400">Modus Ponens</span>
+                <span className="text-gray-900 dark:text-gray-200">:MP 1,2</span>
+                <span className="text-gray-600 dark:text-gray-400">Modus Ponens</span>
               </div>
               <div className="flex justify-between font-mono">
-                <span>:-{`>`}I 2-5</span>
-                <span className="text-gray-400">Conditional Intro</span>
+                <span className="text-gray-900 dark:text-gray-200">:-{`>`}I 2-5</span>
+                <span className="text-gray-600 dark:text-gray-400">Conditional Intro</span>
               </div>
             </div>
           </div>
 
           <div>
-            <h4 className="font-semibold mb-2">Example Proof</h4>
-            <pre className="bg-gray-900 p-2 rounded text-xs font-mono overflow-x-auto">
+            <h4 className="font-semibold mb-2 text-gray-900 dark:text-gray-100">Example Proof</h4>
+            <pre className="bg-gray-50 dark:bg-gray-900 p-2 rounded text-xs font-mono overflow-x-auto text-gray-800 dark:text-gray-200">
 {`show Q
     P → Q :PR
     P :PR
@@ -315,7 +315,7 @@ const ResponsiveCarnapEditor: React.FC<ResponsiveCarnapEditorProps> = ({
         <button
           onClick={() => setShowGuide(!showGuide)}
           className={`absolute ${isMobile ? 'top-2 right-2' : 'top-4 right-4'} z-10 
-            p-2 bg-gray-800/90 hover:bg-gray-700 rounded-lg transition-colors`}
+            p-2 bg-gray-100/90 dark:bg-gray-800/90 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors`}
           title="Syntax Guide"
         >
           <InformationCircleIcon className="w-5 h-5" />
@@ -324,7 +324,7 @@ const ResponsiveCarnapEditor: React.FC<ResponsiveCarnapEditorProps> = ({
 
       {/* Editor */}
       {useMobileEditor ? (
-        <div className="bg-gray-900/50 border border-gray-700/50 rounded-lg p-4">
+        <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700/50 rounded-lg p-4">
           <MobileProofEditor
             value={value}
             onChange={onChange}
@@ -333,7 +333,7 @@ const ResponsiveCarnapEditor: React.FC<ResponsiveCarnapEditorProps> = ({
           />
         </div>
       ) : (
-        <div style={{ height }} className="border border-gray-700/50 rounded-lg overflow-hidden">
+        <div style={{ height }} className="border border-gray-200 dark:border-gray-700/50 rounded-lg overflow-hidden">
           <SimpleTextareaEditor
             value={value}
             onChange={onChange}

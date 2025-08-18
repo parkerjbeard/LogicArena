@@ -41,7 +41,7 @@ describe('Duel Page', () => {
     render(<DuelPage />);
     
     const container = screen.getByText('Duel Mode').closest('div');
-    expect(container).toHaveClass('container', 'mx-auto', 'px-4', 'py-16');
+    expect(container).toHaveClass('max-w-2xl', 'mx-auto', 'text-center');
   });
 
   it('applies correct card styling', () => {
@@ -55,7 +55,7 @@ describe('Duel Page', () => {
     render(<DuelPage />);
     
     const contentWrapper = screen.getByText('Duel Mode').closest('div')?.parentElement;
-    expect(contentWrapper).toHaveClass('max-w-2xl', 'mx-auto', 'text-center');
+    expect(contentWrapper).toHaveClass('container', 'mx-auto', 'px-4', 'py-16');
   });
 
   it('applies correct text styling', () => {

@@ -80,15 +80,15 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-900 to-gray-800">
+    <div className="min-h-screen flex items-center justify-center">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-gray-800/50 backdrop-blur-sm p-8 rounded-2xl shadow-2xl border border-gray-700/50 w-full max-w-md"
+        className="surface p-8 rounded-2xl shadow-2xl border border-default w-full max-w-md"
       >
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">LogicArena</h1>
-          <p className="text-gray-400">
+          <h1 className="text-3xl font-bold mb-2">LogicArena</h1>
+          <p className="text-gray-700 dark:text-gray-400">
             {isRegister ? 'Create your account' : 'Welcome back'}
           </p>
         </div>
@@ -96,7 +96,7 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="space-y-6">
           {isRegister && (
             <div>
-              <label htmlFor="handle" className="block text-sm font-medium text-gray-300 mb-2">
+              <label htmlFor="handle" className="block text-sm font-medium mb-2">
                 Username
               </label>
               <input
@@ -104,7 +104,7 @@ export default function LoginPage() {
                 type="text"
                 value={handle}
                 onChange={(e) => setHandle(e.target.value)}
-                className="w-full px-4 py-3 bg-gray-900/50 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full px-4 py-3 surface border border-default rounded-lg placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 placeholder="johndoe"
                 pattern="[a-zA-Z0-9_]+"
                 title="Username can only contain letters, numbers, and underscores"
@@ -113,7 +113,7 @@ export default function LoginPage() {
           )}
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2">
+            <label htmlFor="email" className="block text-sm font-medium mb-2">
               Email
             </label>
             <input
@@ -121,14 +121,14 @@ export default function LoginPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-900/50 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              className="w-full px-4 py-3 surface border border-default rounded-lg placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               placeholder="you@example.com"
               required
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2">
+            <label htmlFor="password" className="block text-sm font-medium mb-2">
               Password
             </label>
             <input
@@ -136,11 +136,21 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-900/50 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              className="w-full px-4 py-3 surface border border-default rounded-lg placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               placeholder="••••••••"
               required
               minLength={6}
             />
+            {!isRegister && (
+              <div className="mt-2 text-right">
+                <Link
+                  href="/auth/forgot-password"
+                  className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  Forgot your password?
+                </Link>
+              </div>
+            )}
           </div>
 
           {error && (
@@ -172,7 +182,7 @@ export default function LoginPage() {
               setMessage('');
               setHandle('');
             }}
-            className="text-sm text-gray-400 hover:text-gray-300 transition-colors"
+            className="text-sm text-gray-700 dark:text-gray-400 hover:opacity-90 transition-colors"
           >
             {isRegister
               ? 'Already have an account? Sign in'
@@ -180,10 +190,10 @@ export default function LoginPage() {
           </button>
         </div>
 
-        <div className="mt-6 pt-6 border-t border-gray-700/50">
+        <div className="mt-6 pt-6 border-t border-default">
           <Link
             href="/"
-            className="block text-center text-sm text-gray-400 hover:text-gray-300 transition-colors"
+            className="block text-center text-sm text-gray-700 dark:text-gray-400 hover:opacity-90 transition-colors"
           >
             Back to Home
           </Link>

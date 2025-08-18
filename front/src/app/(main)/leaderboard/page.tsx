@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { userAPI } from '@/lib/api';
 import { motion } from 'framer-motion';
@@ -45,11 +45,7 @@ export default function LeaderboardPage() {
   const [page, setPage] = useState(1);
   const { isMobile } = useBreakpoint();
 
-  useEffect(() => {
-    fetchLeaderboard();
-  }, [sortBy, page]);
-
-  const fetchLeaderboard = async () => {
+  const fetchLeaderboard = useCallback(async () => {
     try {
       setLoading(true);
       const data = await userAPI.getLeaderboard(50, (page - 1) * 50, sortBy);
@@ -60,7 +56,13 @@ export default function LeaderboardPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, sortBy]);
+
+  useEffect(() => {
+    fetchLeaderboard();
+  }, [fetchLeaderboard, sortBy, page]);
+
+  
 
   const getRankBadge = (rank: number) => {
     if (rank === 1) return '🥇';
@@ -121,12 +123,12 @@ export default function LeaderboardPage() {
           transition={{ duration: 0.5 }}
           className="text-center mb-12"
         >
-          <h1 className="text-4xl font-bold text-white mb-4">Leaderboard</h1>
-          <p className="text-lg text-gray-300 mb-8">Top {leaderboard.total_users} players</p>
+          <h1 className="text-4xl font-bold mb-4">Leaderboard</h1>
+          <p className="text-lg text-gray-700 dark:text-gray-300 mb-8">Top {leaderboard.total_users} players</p>
           
           {/* Sort Options - Cleaner design */}
           <div className="flex justify-center">
-            <div className="inline-flex bg-gray-800/50 backdrop-blur-sm rounded-lg p-1">
+            <div className="inline-flex surface rounded-lg p-1 border border-default">
               {sortOptions.map((option) => (
                 <button
                   key={option.value}
@@ -136,8 +138,8 @@ export default function LeaderboardPage() {
                   }}
                   className={`px-6 py-2 rounded-md transition-all ${
                     sortBy === option.value 
-                      ? 'bg-gray-700 text-white' 
-                      : 'text-gray-400 hover:text-gray-300'
+                      ? 'surface border border-default' 
+                      : 'text-gray-600 dark:text-gray-400 hover:opacity-90'
                   }`}
                 >
                   {option.label}
@@ -168,14 +170,13 @@ export default function LeaderboardPage() {
                 >
                   <Link href={`/profile?userId=${entry.user_id}`}>
                     <div className={`
-                      bg-gray-800/30 backdrop-blur-sm border rounded-xl p-6
-                      hover:bg-gray-700/30 hover:border-gray-600/50 
-                      transition-all cursor-pointer
+                      surface border rounded-xl p-6
+                      transition-all cursor-pointer hover:opacity-95
                       ${isTopThree 
-                        ? medal === '🥇' ? 'border-yellow-600/50 bg-yellow-900/10' 
-                        : medal === '🥈' ? 'border-gray-400/50 bg-gray-700/20' 
-                        : 'border-orange-600/50 bg-orange-900/10'
-                        : 'border-gray-700/50'
+                        ? medal === '🥇' ? 'border-yellow-600/50' 
+                        : medal === '🥈' ? 'border-gray-400/50' 
+                        : 'border-orange-600/50'
+                        : 'border-default'
                       }
                     `}>
                       <div className="flex items-center justify-between gap-4">
@@ -200,8 +201,8 @@ export default function LeaderboardPage() {
                               )}
                             </div>
                             <div className="min-w-0 flex-1">
-                              <div className="text-lg md:text-xl font-semibold text-white truncate">{entry.handle}</div>
-                              <div className="text-xs md:text-sm text-gray-400 truncate">
+                              <div className="text-lg md:text-xl font-semibold truncate">{entry.handle}</div>
+                              <div className="text-xs md:text-sm text-gray-600 dark:text-gray-400 truncate">
                                 {entry.level === 7 ? 'Master' : 
                                  entry.level >= 5 ? 'Expert' : 
                                  entry.level >= 3 ? 'Advanced' : 
@@ -217,7 +218,7 @@ export default function LeaderboardPage() {
                             <div className={`text-xl md:text-2xl font-bold ${sortOptions.find(o => o.value === sortBy)?.color}`}>
                               {getSortValue(entry)}
                             </div>
-                            <div className="text-xs md:text-sm text-gray-400">
+                            <div className="text-xs md:text-sm text-gray-600 dark:text-gray-400">
                               {sortOptions.find(o => o.value === sortBy)?.label}
                             </div>
                           </div>

@@ -40,26 +40,23 @@ Sentry.init({
   },
   
   // Integrations
-  integrations: [
-    // Browser tracing
-    new Sentry.BrowserTracing({
-      // Set sampling rate for performance monitoring
-      tracingOrigins: ["localhost", process.env.NEXT_PUBLIC_API_URL || "/", /^\//],
-      
-      // Capture interactions
-      routingInstrumentation: Sentry.nextRouterInstrumentation,
-    }),
-    
-    // Replay integration
-    new Sentry.Replay({
-      // Mask sensitive content
-      maskAllText: false,
-      maskAllInputs: true,
-      
-      // Block certain elements
-      blockSelector: ".sensitive-data",
-    }),
-  ],
+  integrations: (() => {
+    const integrations: any[] = [];
+    try {
+      integrations.push(new (Sentry as any).BrowserTracing({
+        tracingOrigins: ["localhost", process.env.NEXT_PUBLIC_API_URL || "/", /^\//],
+        routingInstrumentation: (Sentry as any).nextRouterInstrumentation,
+      }));
+    } catch (_) {}
+    try {
+      integrations.push(new (Sentry as any).Replay({
+        maskAllText: false,
+        maskAllInputs: true,
+        blockSelector: ".sensitive-data",
+      }));
+    } catch (_) {}
+    return integrations;
+  })(),
   
   // Additional options
   ignoreErrors: [

@@ -97,7 +97,7 @@ describe('Home Page', () => {
     const practiceLink = screen.getByText('🧩 Practice Mode').closest('a');
     const leaderboardLink = screen.getByText('🏆 Leaderboard').closest('a');
     
-    expect(tutorialsLink).toHaveAttribute('href', '/tutorials');
+    expect(tutorialsLink).toHaveAttribute('href', '/tutorial');
     expect(practiceLink).toHaveAttribute('href', '/practice');
     expect(leaderboardLink).toHaveAttribute('href', '/leaderboard');
   });
@@ -130,7 +130,7 @@ describe('Home Page', () => {
     
     const cards = screen.getAllByText(/📚|🧩|🏆/).map(el => el.closest('div'));
     cards.forEach(card => {
-      expect(card).toHaveClass('bg-gray-800/30', 'backdrop-blur-sm');
+      expect(card).toHaveClass('surface', 'border', 'border-default');
     });
   });
 
@@ -172,6 +172,6 @@ describe('Home Page', () => {
     render(<Home />);
     
     const tutorialCard = screen.getByText('📚 Interactive Tutorials').closest('div');
-    expect(tutorialCard).toHaveClass('hover:bg-gray-700/30', 'hover:border-gray-600/50', 'transition-all', 'cursor-pointer');
+    expect(tutorialCard).toHaveClass('hover:opacity-95', 'transition-all', 'cursor-pointer');
   });
 });

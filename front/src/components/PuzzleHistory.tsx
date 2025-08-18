@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, CheckCircle, XCircle, ChevronDown, RotateCcw, Eye } from 'lucide-react';
 import type { PuzzleSubmissionHistory } from '@/types/statistics';
+import { DifficultyBadge } from '@/components/ui/DifficultyBadge';
 
 interface PuzzleHistoryProps {
   history: PuzzleSubmissionHistory[];
@@ -105,11 +106,15 @@ export const PuzzleHistory: React.FC<PuzzleHistoryProps> = ({
                         <span className="font-medium text-gray-200">
                           Puzzle #{submission.puzzle_id}
                         </span>
-                        <span className="text-xs text-gray-500">
-                          Level {submission.puzzle.difficulty}
-                        </span>
+                        <DifficultyBadge
+                          difficulty={submission.puzzle.difficulty}
+                          chapter={submission.puzzle.chapter}
+                          nestedDepth={submission.puzzle.nested_depth}
+                          size="xs"
+                          showDetails
+                        />
                         {isOptimal && submission.verdict && (
-                          <span className="text-xs bg-green-600/20 text-green-400 px-2 py-0.5 rounded">
+                          <span className="text-xs bg-green-600/20 text-green-400 px-2 py-0.5 rounded border border-green-600/30">
                             Optimal
                           </span>
                         )}

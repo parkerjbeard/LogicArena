@@ -19,6 +19,12 @@ export default function Navigation() {
               Practice
             </Link>
             <Link 
+              href="/practice/completed"
+              className="px-3 py-1.5 text-sm font-medium text-gray-300 hover:text-blue-300 bg-gray-800/50 rounded-md border border-gray-700 hover:bg-gray-700/50 transition-all"
+            >
+              Completed
+            </Link>
+            <Link 
               href="/leaderboard"
               className="px-3 py-1.5 text-sm font-medium text-gray-300 hover:text-blue-300 bg-gray-800/50 rounded-md border border-gray-700 hover:bg-gray-700/50 transition-all"
             >

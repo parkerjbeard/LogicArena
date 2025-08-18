@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { 
   BookOpen, 
@@ -12,8 +11,7 @@ import {
   Clock,
   TrendingUp,
   Sparkles,
-  Users,
-  ChevronLeft
+  Users
 } from 'lucide-react';
 import { TutorialFramework } from '@/components/Tutorial/LazyTutorialFramework';
 import { yourFirstProofSteps } from '@/tutorials/yourFirstProof';
@@ -215,15 +213,7 @@ export default function TutorialsPage() {
 
   return (
     <main className="flex min-h-screen flex-col items-center">
-      {/* Header - matching landing page */}
-      <div className="z-10 w-full max-w-5xl items-center justify-between font-mono text-sm flex">
-        <div className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-          <Link href="/" className="flex items-center gap-2 hover:underline">
-            <ChevronLeft className="w-4 h-4" />
-            <h1 className="text-2xl font-bold">LogicArena-α</h1>
-          </Link>
-        </div>
-      </div>
+      {/* Header removed per design: no large LogicArena button on this page */}
 
       {/* Title */}
       <div className="relative flex place-items-center mt-20 mb-10">
@@ -254,13 +244,7 @@ export default function TutorialsPage() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.1 }}
-                  className={`
-                    group rounded-lg border border-transparent px-5 py-4 
-                    transition-colors hover:border-gray-300 hover:bg-gray-100 
-                    hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30
-                    ${status === 'locked' ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}
-                    ${tutorial.id === 'chapter-1' ? 'bg-gradient-to-br from-purple-50/50 to-blue-50/50 dark:from-purple-900/10 dark:to-blue-900/10' : ''}
-                  `}
+                  className={`group rounded-lg border border-default surface px-5 py-4 transition-colors hover:opacity-95 ${status === 'locked' ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                   onClick={() => handleStartTutorial(tutorial)}
                 >
                   {/* Tutorial Content */}
@@ -279,12 +263,12 @@ export default function TutorialsPage() {
                     </h3>
                   </div>
                   
-                  <p className="m-0 max-w-[30ch] text-sm opacity-50 mb-4">
+                  <p className="m-0 max-w-[30ch] text-sm opacity-75 dark:opacity-70 mb-4">
                     {tutorial.description}
                   </p>
 
                   {/* Bottom info */}
-                  <div className="flex items-center justify-between text-xs opacity-50">
+                  <div className="flex items-center justify-between text-xs opacity-75 dark:opacity-70">
                     <div className="flex items-center gap-2">
                       <Clock className="w-3 h-3" />
                       <span>{tutorial.estimatedTime} min</span>
@@ -329,12 +313,7 @@ export default function TutorialsPage() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.1 }}
-                  className={`
-                    group rounded-lg border border-transparent px-5 py-4 
-                    transition-colors hover:border-gray-300 hover:bg-gray-100 
-                    hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30
-                    ${status === 'locked' ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}
-                  `}
+                  className={`group rounded-lg border border-default surface px-5 py-4 transition-colors hover:opacity-95 ${status === 'locked' ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                   onClick={() => handleStartTutorial(tutorial)}
                 >
                   {/* Tutorial Content */}
@@ -353,12 +332,12 @@ export default function TutorialsPage() {
                     </h3>
                   </div>
                   
-                  <p className="m-0 max-w-[30ch] text-sm opacity-50 mb-4">
+                  <p className="m-0 max-w-[30ch] text-sm opacity-75 dark:opacity-70 mb-4">
                     {tutorial.description}
                   </p>
 
                   {/* Bottom info */}
-                  <div className="flex items-center justify-between text-xs opacity-50">
+                  <div className="flex items-center justify-between text-xs opacity-75 dark:opacity-70">
                     <div className="flex items-center gap-2">
                       <Clock className="w-3 h-3" />
                       <span>{tutorial.estimatedTime} min</span>
