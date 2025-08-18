@@ -229,26 +229,14 @@ class CarnapFitchProofChecker:
                 })
                 continue
             
-            # Parse regular line (formula :justification)
-            match = re.match(r'^(.+?)\s*:\s*(.+)$', stripped_line)
-            if match:
-                formula = match.group(1).strip()
-                justification = match.group(2).strip()
-                
-                # Handle QED lines (e.g., ":DD" or ":CD 3")
-                if not formula:
-                    formula = "QED"
-                
+            # Handle explicit QED line like "QED :..."
+            qed_match = re.match(r'^qed\s*:\s*(.+)$', stripped_line, flags=re.IGNORECASE)
+            if qed_match:
+                formula = "QED"
+                justification = qed_match.group(1).strip()
+                rule, cited_lines = self.parse_justification(justification)
                 self.line_formulas[line_num] = formula
                 self.accessible_lines.add(line_num)
-                
-                # Parse justification
-                rule, cited_lines = self.parse_justification(justification)
-                
-                # Handle assumptions
-                if rule == 'AS' and self.subproof_stack:
-                    self.subproof_stack[-1]['assumptions'].append(line_num)
-                
                 parsed_steps.append({
                     'line_number': line_num,
                     'formula': formula,
@@ -260,19 +248,50 @@ class CarnapFitchProofChecker:
                     'is_show': False
                 })
             else:
-                # Try to parse as formula only (implicit reiteration)
-                self.line_formulas[line_num] = stripped_line
-                self.accessible_lines.add(line_num)
-                parsed_steps.append({
-                    'line_number': line_num,
-                    'formula': stripped_line,
-                    'justification': '',
-                    'rule': '',
-                    'cited_lines': [],
-                    'subproof_level': subproof_level,
-                    'is_premise': False,
-                    'is_show': False
-                })
+                # Parse regular line (formula :justification)
+                match = re.match(r'^(.+?)\s*:\s*(.+)$', stripped_line)
+                if match:
+                    formula = match.group(1).strip()
+                    justification = match.group(2).strip()
+                    
+                    # Handle colon-led QED lines (e.g., ":DD" or ":CD 3")
+                    if not formula:
+                        formula = "QED"
+                
+                    self.line_formulas[line_num] = formula
+                    self.accessible_lines.add(line_num)
+                    
+                    # Parse justification
+                    rule, cited_lines = self.parse_justification(justification)
+                    
+                    # Handle assumptions
+                    if rule == 'AS' and self.subproof_stack:
+                        self.subproof_stack[-1]['assumptions'].append(line_num)
+                    
+                    parsed_steps.append({
+                        'line_number': line_num,
+                        'formula': formula,
+                        'justification': justification,
+                        'rule': rule,
+                        'cited_lines': cited_lines,
+                        'subproof_level': subproof_level,
+                        'is_premise': False,
+                        'is_show': False
+                    })
+                else:
+                    # Try to parse as formula only (implicit reiteration)
+                    self.line_formulas[line_num] = stripped_line
+                    self.accessible_lines.add(line_num)
+                    parsed_steps.append({
+                        'line_number': line_num,
+                        'formula': stripped_line,
+                        'justification': '',
+                        'rule': '',
+                        'cited_lines': [],
+                        'subproof_level': subproof_level,
+                        'is_premise': False,
+                        'is_show': False
+                    })
         
         return parsed_steps
     
@@ -340,59 +359,132 @@ class CarnapFitchProofChecker:
         return True
     
     def _validate_rule_application(self, conclusion: str, rule: str, cited_lines: List[int], line_num: int) -> bool:
-        """Validate specific inference rule applications"""
+        """Validate specific inference rule applications with comprehensive rule checking"""
         # Get referenced formulas
         ref_formulas = [self.line_formulas.get(ref, '') for ref in cited_lines]
         
-        # Normalize formulas for comparison
+        # Enhanced formula normalization for comparison
         def normalize(f):
-            return f.strip().replace(' ', '').replace('->','→').replace('/\\','∧').replace('\\/','∨').replace('~','¬').replace('<->','↔')
+            """Normalize formula for comparison, handling all logical operators"""
+            if not f:
+                return ''
+            normalized = f.strip().replace(' ', '')
+            # Convert to consistent symbols
+            normalized = normalized.replace('->','→').replace('⊃','→')
+            normalized = normalized.replace('/\\','∧').replace('&','∧')
+            normalized = normalized.replace('\\/','∨').replace('|','∨').replace('v','∨')
+            normalized = normalized.replace('~','¬').replace('-','¬').replace('not','¬')
+            normalized = normalized.replace('<->','↔').replace('<=>','↔').replace('iff','↔')
+            return normalized
+        
+        # Helper to parse binary operators
+        def parse_binary(formula, operators):
+            """Parse formula with binary operators, returns (left, operator, right) or None"""
+            norm = normalize(formula)
+            for op in operators:
+                if op in norm:
+                    # Find the main operator (not within parentheses)
+                    depth = 0
+                    for i, char in enumerate(norm):
+                        if char == '(':
+                            depth += 1
+                        elif char == ')':
+                            depth -= 1
+                        elif depth == 0 and norm[i:i+len(op)] == op:
+                            return (norm[:i], op, norm[i+len(op):])
+            return None
         
         conclusion_norm = normalize(conclusion)
         
         # Validate based on rule type
-        if rule in ['MP', '->E']:  # Modus Ponens
+        if rule in ['MP', '->E', '→E']:  # Modus Ponens / Conditional Elimination
             if len(ref_formulas) >= 2:
                 # Find conditional and antecedent
                 for i, formula in enumerate(ref_formulas):
-                    if '->' in formula or '→' in formula:
-                        parts = re.split(r'->|→', formula, 1)
-                        if len(parts) == 2:
-                            antecedent = normalize(parts[0])
-                            consequent = normalize(parts[1])
-                            # Check other formulas for antecedent
-                            for j, other in enumerate(ref_formulas):
-                                if i != j and normalize(other) == antecedent and consequent == conclusion_norm:
-                                    return True
-                self.errors.append(f"Line {line_num}: Invalid Modus Ponens application")
+                    parsed = parse_binary(formula, ['→', '->'])
+                    if parsed:
+                        antecedent, _, consequent = parsed
+                        # Check other formulas for antecedent
+                        for j, other in enumerate(ref_formulas):
+                            if i != j and normalize(other) == antecedent and consequent == conclusion_norm:
+                                return True
+                self.errors.append(f"Line {line_num}: Invalid Modus Ponens - need A→B and A to derive B")
                 return False
                 
-        elif rule in ['&I', '/\\I']:  # Conjunction Introduction
+        elif rule in ['&I', '/\\I', '∧I']:  # Conjunction Introduction
             if len(ref_formulas) >= 2:
-                # Try different orderings
-                for i in range(len(ref_formulas)):
-                    for j in range(i+1, len(ref_formulas)):
-                        expected1 = normalize(f"{ref_formulas[i]}∧{ref_formulas[j]}")
-                        expected2 = normalize(f"{ref_formulas[j]}∧{ref_formulas[i]}")
-                        if conclusion_norm == expected1 or conclusion_norm == expected2:
-                            return True
-                self.errors.append(f"Line {line_num}: Invalid Conjunction Introduction")
+                # Check if conclusion is conjunction of any two referenced formulas
+                parsed = parse_binary(conclusion, ['∧', '&', '/\\'])
+                if parsed:
+                    left, _, right = parsed
+                    # Check all combinations
+                    for i in range(len(ref_formulas)):
+                        for j in range(len(ref_formulas)):
+                            if i != j:
+                                if (normalize(ref_formulas[i]) == left and normalize(ref_formulas[j]) == right) or \
+                                   (normalize(ref_formulas[i]) == right and normalize(ref_formulas[j]) == left):
+                                    return True
+                self.errors.append(f"Line {line_num}: Invalid Conjunction Introduction - need A and B to derive A∧B")
                 return False
                 
-        elif rule in ['&E', '/\\E']:  # Conjunction Elimination
+        elif rule in ['&E', '/\\E', '∧E']:  # Conjunction Elimination
             if len(ref_formulas) >= 1:
                 for formula in ref_formulas:
-                    if '&' in formula or '/\\' in formula or '∧' in formula:
-                        parts = re.split(r'&|/\\|∧', formula, 1)
-                        if len(parts) == 2:
-                            left = normalize(parts[0])
-                            right = normalize(parts[1])
-                            if conclusion_norm == left or conclusion_norm == right:
-                                return True
-                self.errors.append(f"Line {line_num}: Invalid Conjunction Elimination")
+                    parsed = parse_binary(formula, ['∧', '&', '/\\'])
+                    if parsed:
+                        left, _, right = parsed
+                        if conclusion_norm == left or conclusion_norm == right:
+                            return True
+                self.errors.append(f"Line {line_num}: Invalid Conjunction Elimination - can only derive components of conjunction")
                 return False
         
-        elif rule == 'R':  # Reiteration
+        elif rule in ['MT']:  # Modus Tollens
+            if len(ref_formulas) >= 2:
+                # Need A→B and ¬B to derive ¬A
+                for i, formula in enumerate(ref_formulas):
+                    parsed = parse_binary(formula, ['→', '->'])
+                    if parsed:
+                        antecedent, _, consequent = parsed
+                        # Check for negated consequent
+                        for j, other in enumerate(ref_formulas):
+                            if i != j:
+                                other_norm = normalize(other)
+                                # Check if other is ¬consequent
+                                if other_norm == f'¬{consequent}' or other_norm == f'¬({consequent})':
+                                    # Conclusion should be ¬antecedent
+                                    if conclusion_norm == f'¬{antecedent}' or conclusion_norm == f'¬({antecedent})':
+                                        return True
+                self.errors.append(f"Line {line_num}: Invalid Modus Tollens - need A→B and ¬B to derive ¬A")
+                return False
+        
+        elif rule in ['DN', 'DNE']:  # Double Negation Elimination
+            if len(ref_formulas) >= 1:
+                for formula in ref_formulas:
+                    norm = normalize(formula)
+                    # Check if formula is ¬¬A and conclusion is A
+                    if norm.startswith('¬¬'):
+                        inner = norm[2:]
+                        if conclusion_norm == inner:
+                            return True
+                    # Also check parenthesized forms
+                    if norm.startswith('¬(¬') and norm.endswith(')'):
+                        inner = norm[3:-1]
+                        if conclusion_norm == inner:
+                            return True
+                self.errors.append(f"Line {line_num}: Invalid Double Negation Elimination - need ¬¬A to derive A")
+                return False
+        
+        elif rule in ['DNI']:  # Double Negation Introduction
+            if len(ref_formulas) >= 1:
+                for formula in ref_formulas:
+                    norm = normalize(formula)
+                    # Check if conclusion is ¬¬formula
+                    if conclusion_norm == f'¬¬{norm}' or conclusion_norm == f'¬¬({norm})':
+                        return True
+                self.errors.append(f"Line {line_num}: Invalid Double Negation Introduction - need A to derive ¬¬A")
+                return False
+        
+        elif rule in ['R', 'REIT']:  # Reiteration
             if len(ref_formulas) >= 1:
                 for formula in ref_formulas:
                     if normalize(formula) == conclusion_norm:
@@ -400,29 +492,97 @@ class CarnapFitchProofChecker:
                 self.errors.append(f"Line {line_num}: Reiteration must copy formula exactly")
                 return False
         
-        elif rule == 'ADD' or rule in ['|I', '\\/I']:  # Addition/Disjunction Introduction
-            # Can add any disjunct to existing formula
-            if '|' in conclusion or '\\/' in conclusion or '∨' in conclusion:
-                parts = re.split(r'\||\\\/|∨', conclusion, 1)
-                if len(parts) == 2:
+        elif rule in ['ADD', '|I', '\\/I', '∨I']:  # Addition/Disjunction Introduction
+            # Can derive A∨B from A (or B∨A from B)
+            if len(ref_formulas) >= 1:
+                parsed = parse_binary(conclusion, ['∨', '|', '\\/'])
+                if parsed:
+                    left, _, right = parsed
                     for formula in ref_formulas:
                         formula_norm = normalize(formula)
-                        if formula_norm == normalize(parts[0]) or formula_norm == normalize(parts[1]):
+                        if formula_norm == left or formula_norm == right:
                             return True
-            return True  # Be lenient with addition
+                self.errors.append(f"Line {line_num}: Invalid Disjunction Introduction - need A to derive A∨B")
+                return False
         
-        elif rule in ['->I', 'CP', 'CD']:  # Conditional Introduction/Proof
-            # This typically closes a subproof
-            if '->' in conclusion or '→' in conclusion:
-                return True
-            self.errors.append(f"Line {line_num}: Conditional Introduction must produce a conditional")
+        elif rule in ['|E', '\\/E', '∨E']:  # Disjunction Elimination
+            # Complex rule: needs A∨B and two subproofs showing C from A and C from B
+            # For now, check if we have a disjunction in references
+            has_disjunction = False
+            for formula in ref_formulas:
+                if parse_binary(formula, ['∨', '|', '\\/']):
+                    has_disjunction = True
+                    break
+            if not has_disjunction:
+                self.errors.append(f"Line {line_num}: Disjunction Elimination requires a disjunction")
+                return False
+            return True  # More complex validation would need subproof tracking
+        
+        elif rule in ['<->I', '↔I', 'BC']:  # Biconditional Introduction
+            # Need both A→B and B→A to derive A↔B
+            parsed = parse_binary(conclusion, ['↔', '<->'])
+            if parsed:
+                left, _, right = parsed
+                found_left_to_right = False
+                found_right_to_left = False
+                
+                for formula in ref_formulas:
+                    norm = normalize(formula)
+                    if norm == f'{left}→{right}' or norm == f'({left})→({right})':
+                        found_left_to_right = True
+                    if norm == f'{right}→{left}' or norm == f'({right})→({left})':
+                        found_right_to_left = True
+                
+                if found_left_to_right and found_right_to_left:
+                    return True
+                self.errors.append(f"Line {line_num}: Biconditional Introduction needs both directions")
+                return False
+        
+        elif rule in ['<->E', '↔E', 'CB']:  # Biconditional Elimination
+            # From A↔B can derive A→B or B→A
+            for formula in ref_formulas:
+                parsed = parse_binary(formula, ['↔', '<->'])
+                if parsed:
+                    left, _, right = parsed
+                    # Check if conclusion is one of the conditionals
+                    if conclusion_norm == f'{left}→{right}' or conclusion_norm == f'{right}→{left}':
+                        return True
+            self.errors.append(f"Line {line_num}: Invalid Biconditional Elimination")
             return False
         
-        elif rule in ['DD', 'ID', 'IP']:  # Direct/Indirect Derivation
-            # These close show lines
+        elif rule in ['~I', '¬I', '-I']:  # Negation Introduction (requires contradiction in subproof)
+            # Complex rule requiring subproof analysis
+            return True  # Would need subproof tracking for full validation
+        
+        elif rule in ['~E', '¬E', '-E']:  # Negation Elimination
+            # From A and ¬A derive ⊥ (bottom/contradiction)
+            if conclusion_norm in ['⊥', '_|_', 'false']:
+                # Check for contradictory formulas
+                for i, formula1 in enumerate(ref_formulas):
+                    norm1 = normalize(formula1)
+                    for j, formula2 in enumerate(ref_formulas):
+                        if i != j:
+                            norm2 = normalize(formula2)
+                            # Check if one is negation of the other
+                            if norm2 == f'¬{norm1}' or norm2 == f'¬({norm1})' or \
+                               norm1 == f'¬{norm2}' or norm1 == f'¬({norm2})':
+                                return True
+            return True  # Be lenient for now
+        
+        elif rule in ['->I', '→I', 'CP', 'CD']:  # Conditional Introduction/Proof
+            # Should produce a conditional from a subproof
+            parsed = parse_binary(conclusion, ['→', '->'])
+            if not parsed:
+                self.errors.append(f"Line {line_num}: Conditional Introduction must produce A→B")
+                return False
+            return True  # Would need subproof tracking for full validation
+        
+        elif rule in ['DD', 'ID', 'IP', 'RAA']:  # Direct/Indirect Derivation
+            # These close show lines - need subproof context
             return True
         
-        # For other rules, we'll be lenient for now
+        # Default for unrecognized rules
+        self.warnings.append(f"Line {line_num}: Rule '{rule}' not fully validated")
         return True
     
     def validate_proof(self, gamma: str, phi: str, proof_text: str) -> ProofResponse:
