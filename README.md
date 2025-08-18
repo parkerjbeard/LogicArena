@@ -1,5 +1,11 @@
 # LogicArena
 
+[![Tests](https://github.com/parkerbeard/LogicArena/actions/workflows/tests.yml/badge.svg)](https://github.com/parkerbeard/LogicArena/actions/workflows/tests.yml)
+[![Docker Build](https://github.com/parkerbeard/LogicArena/actions/workflows/docker-build.yml/badge.svg)](https://github.com/parkerbeard/LogicArena/actions/workflows/docker-build.yml)
+[![WebSocket Tests](https://github.com/parkerbeard/LogicArena/actions/workflows/websocket-tests.yml/badge.svg)](https://github.com/parkerbeard/LogicArena/actions/workflows/websocket-tests.yml)
+[![Deploy to Production](https://github.com/parkerbeard/LogicArena/actions/workflows/deploy-production.yml/badge.svg)](https://github.com/parkerbeard/LogicArena/actions/workflows/deploy-production.yml)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A competitive platform for practicing formal logic and natural deduction proofs.
 
 ## Features
