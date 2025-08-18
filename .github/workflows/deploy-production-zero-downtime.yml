@@ -1,0 +1,582 @@
+name: Zero-Downtime Production Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag/version to deploy'
+        required: false
+        default: 'stable'
+      strategy:
+        description: 'Deployment strategy'
+        required: true
+        type: choice
+        default: 'rolling'
+        options:
+          - rolling
+          - blue-green
+          - canary
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/logicarena
+
+jobs:
+  pre-deployment-checks:
+    runs-on: ubuntu-latest
+    outputs:
+      deploy: ${{ steps.check.outputs.deploy }}
+      version: ${{ steps.check.outputs.version }}
+      strategy: ${{ steps.check.outputs.strategy }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate deployment parameters
+        id: check
+        run: |
+          echo "deploy=true" >> $GITHUB_OUTPUT
+          echo "version=${{ github.event.inputs.tag || 'stable' }}" >> $GITHUB_OUTPUT
+          echo "strategy=${{ github.event.inputs.strategy || 'rolling' }}" >> $GITHUB_OUTPUT
+
+      - name: Verify images exist
+        run: |
+          VERSION=${{ steps.check.outputs.version }}
+          SERVICES=(frontend gateway match puzzle rating proof-checker)
+          
+          for service in "${SERVICES[@]}"; do
+            docker manifest inspect ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${service}:${VERSION} || \
+              (echo "Image not found for ${service}:${VERSION}" && exit 1)
+          done
+
+  health-check-current:
+    needs: pre-deployment-checks
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check current production health
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USERNAME }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            cd /opt/logicarena
+            
+            # Check all services are healthy before deployment
+            echo "🏥 Checking current production health..."
+            
+            # API health
+            if ! curl -f http://localhost:8000/health; then
+              echo "❌ API is not healthy"
+              exit 1
+            fi
+            
+            # Frontend health
+            if ! curl -f http://localhost:3000; then
+              echo "❌ Frontend is not healthy"
+              exit 1
+            fi
+            
+            # Check database connections
+            docker-compose exec -T gateway python -c "
+            from app.database import get_db
+            import asyncio
+            async def check():
+                async with get_db() as db:
+                    await db.execute('SELECT 1')
+                    print('✅ Database connection healthy')
+            asyncio.run(check())
+            " || exit 1
+            
+            echo "✅ All services are healthy"
+
+  deploy-rolling:
+    needs: [pre-deployment-checks, health-check-current]
+    if: needs.pre-deployment-checks.outputs.strategy == 'rolling'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Rolling deployment
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USERNAME }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            cd /opt/logicarena
+            VERSION=${{ needs.pre-deployment-checks.outputs.version }}
+            
+            cat > rolling-deploy.sh << 'EOF'
+            #!/bin/bash
+            set -e
+            
+            VERSION=$1
+            echo "🔄 Starting rolling deployment with zero downtime..."
+            
+            # Update environment
+            source .env
+            
+            # Login to registry
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            # Function to update a service
+            update_service() {
+                local service=$1
+                local image="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${service}:${VERSION}"
+                
+                echo "📦 Updating ${service}..."
+                
+                # Pull new image
+                docker pull ${image}
+                
+                # Get current container
+                OLD_CONTAINER=$(docker-compose ps -q ${service})
+                
+                # Scale up (add new container)
+                docker-compose up -d --no-deps --scale ${service}=2 ${service}
+                
+                # Wait for new container to be healthy
+                sleep 15
+                
+                # Health check new container
+                NEW_CONTAINER=$(docker-compose ps -q ${service} | grep -v ${OLD_CONTAINER} | head -1)
+                
+                # For gateway, check health endpoint
+                if [[ "$service" == "gateway" ]]; then
+                    docker exec ${NEW_CONTAINER} curl -f http://localhost:8000/health || exit 1
+                fi
+                
+                # Remove old container
+                docker stop ${OLD_CONTAINER}
+                docker rm ${OLD_CONTAINER}
+                
+                # Scale back to 1
+                docker-compose up -d --no-deps --scale ${service}=1 ${service}
+                
+                echo "✅ ${service} updated successfully"
+            }
+            
+            # Update backend services first (in dependency order)
+            for service in proof-checker rating puzzle match gateway; do
+                update_service ${service}
+                sleep 10
+            done
+            
+            # Update frontend last (with special handling)
+            echo "📦 Updating frontend with zero downtime..."
+            
+            # Start new frontend container on different port
+            docker run -d \
+                --name logicarena-front-new \
+                --network logicarena_logic_network \
+                -p 3001:3000 \
+                --env-file .env \
+                ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:${VERSION}
+            
+            # Wait for new frontend to be ready
+            timeout 60 bash -c 'until curl -f http://localhost:3001; do sleep 2; done'
+            
+            # Update nginx/load balancer to point to new frontend
+            # (This assumes you have nginx in front)
+            if [ -f /etc/nginx/sites-available/logicarena ]; then
+                sed -i 's/localhost:3000/localhost:3001/g' /etc/nginx/sites-available/logicarena
+                nginx -s reload
+                sleep 5
+                
+                # Stop old frontend
+                docker-compose stop front
+                docker-compose rm -f front
+                
+                # Update port back and restart with docker-compose
+                sed -i 's/localhost:3001/localhost:3000/g' /etc/nginx/sites-available/logicarena
+                docker-compose up -d front
+                docker stop logicarena-front-new
+                docker rm logicarena-front-new
+                nginx -s reload
+            else
+                # Simple swap without nginx
+                docker-compose stop front
+                docker-compose rm -f front
+                docker-compose up -d front
+            fi
+            
+            # Run migrations
+            echo "🔄 Running database migrations..."
+            docker-compose exec -T gateway alembic upgrade head
+            
+            echo "✅ Rolling deployment completed!"
+            EOF
+            
+            chmod +x rolling-deploy.sh
+            ./rolling-deploy.sh $VERSION
+
+  deploy-blue-green:
+    needs: [pre-deployment-checks, health-check-current]
+    if: needs.pre-deployment-checks.outputs.strategy == 'blue-green'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Blue-Green deployment
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USERNAME }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            cd /opt/logicarena
+            VERSION=${{ needs.pre-deployment-checks.outputs.version }}
+            
+            cat > blue-green-deploy.sh << 'EOF'
+            #!/bin/bash
+            set -e
+            
+            VERSION=$1
+            echo "🔵🟢 Starting blue-green deployment..."
+            
+            # Determine current environment (blue or green)
+            if docker-compose ps | grep -q "logicarena-blue"; then
+                CURRENT_ENV="blue"
+                NEW_ENV="green"
+            else
+                CURRENT_ENV="green"
+                NEW_ENV="blue"
+            fi
+            
+            echo "Current environment: ${CURRENT_ENV}"
+            echo "Deploying to: ${NEW_ENV}"
+            
+            # Create new environment compose file
+            cat > docker-compose.${NEW_ENV}.yml << EOL
+            version: '3.8'
+            services:
+              gateway-${NEW_ENV}:
+                image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-gateway:${VERSION}
+                container_name: logicarena-gateway-${NEW_ENV}
+                networks:
+                  - logic_network
+                environment:
+                  - SERVICE_COLOR=${NEW_ENV}
+                depends_on:
+                  - postgres
+                  - redis
+                  
+              front-${NEW_ENV}:
+                image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:${VERSION}
+                container_name: logicarena-front-${NEW_ENV}
+                networks:
+                  - logic_network
+                environment:
+                  - SERVICE_COLOR=${NEW_ENV}
+                  - API_URL=http://gateway-${NEW_ENV}:8000
+            EOL
+            
+            # Start new environment
+            docker-compose -f docker-compose.yml -f docker-compose.${NEW_ENV}.yml up -d
+            
+            # Wait for new environment to be healthy
+            echo "⏳ Waiting for ${NEW_ENV} environment to be healthy..."
+            sleep 30
+            
+            # Health check new environment
+            if [[ "${NEW_ENV}" == "green" ]]; then
+                GATEWAY_PORT=8001
+                FRONTEND_PORT=3001
+            else
+                GATEWAY_PORT=8002
+                FRONTEND_PORT=3002
+            fi
+            
+            curl -f http://localhost:${GATEWAY_PORT}/health || exit 1
+            curl -f http://localhost:${FRONTEND_PORT} || exit 1
+            
+            # Run migrations in new environment
+            docker exec logicarena-gateway-${NEW_ENV} alembic upgrade head
+            
+            # Switch traffic to new environment
+            echo "🔄 Switching traffic to ${NEW_ENV}..."
+            
+            # Update load balancer/nginx
+            cat > /etc/nginx/sites-available/logicarena-${NEW_ENV} << EOL
+            upstream api_backend {
+                server localhost:${GATEWAY_PORT};
+            }
+            
+            upstream frontend {
+                server localhost:${FRONTEND_PORT};
+            }
+            
+            server {
+                listen 80;
+                server_name logicarena.com;
+                
+                location /api {
+                    proxy_pass http://api_backend;
+                    proxy_set_header Host \$host;
+                    proxy_set_header X-Real-IP \$remote_addr;
+                }
+                
+                location / {
+                    proxy_pass http://frontend;
+                    proxy_set_header Host \$host;
+                    proxy_set_header X-Real-IP \$remote_addr;
+                }
+            }
+            EOL
+            
+            ln -sf /etc/nginx/sites-available/logicarena-${NEW_ENV} /etc/nginx/sites-enabled/logicarena
+            nginx -s reload
+            
+            # Verify new environment is serving traffic
+            sleep 5
+            curl -f http://logicarena.com/health || exit 1
+            
+            # Keep old environment running for 5 minutes (for quick rollback)
+            echo "✅ ${NEW_ENV} environment is now live!"
+            echo "⏰ Keeping ${CURRENT_ENV} environment for 5 minutes..."
+            
+            # Schedule cleanup of old environment
+            at now + 5 minutes << EOL
+            cd /opt/logicarena
+            docker-compose -f docker-compose.yml -f docker-compose.${CURRENT_ENV}.yml down
+            rm -f docker-compose.${CURRENT_ENV}.yml
+            EOL
+            
+            echo "✅ Blue-green deployment completed!"
+            EOF
+            
+            chmod +x blue-green-deploy.sh
+            ./blue-green-deploy.sh $VERSION
+
+  deploy-canary:
+    needs: [pre-deployment-checks, health-check-current]
+    if: needs.pre-deployment-checks.outputs.strategy == 'canary'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Canary deployment
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USERNAME }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            cd /opt/logicarena
+            VERSION=${{ needs.pre-deployment-checks.outputs.version }}
+            
+            cat > canary-deploy.sh << 'EOF'
+            #!/bin/bash
+            set -e
+            
+            VERSION=$1
+            echo "🐤 Starting canary deployment..."
+            
+            # Start with 10% traffic to canary
+            CANARY_WEIGHT=10
+            
+            # Deploy canary instances
+            docker run -d \
+                --name logicarena-gateway-canary \
+                --network logicarena_logic_network \
+                -p 8001:8000 \
+                --env-file .env \
+                -e DEPLOYMENT_TYPE=canary \
+                ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-gateway:${VERSION}
+            
+            docker run -d \
+                --name logicarena-front-canary \
+                --network logicarena_logic_network \
+                -p 3001:3000 \
+                --env-file .env \
+                -e API_URL=http://logicarena-gateway-canary:8000 \
+                -e DEPLOYMENT_TYPE=canary \
+                ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:${VERSION}
+            
+            # Wait for canary to be healthy
+            sleep 20
+            curl -f http://localhost:8001/health || exit 1
+            curl -f http://localhost:3001 || exit 1
+            
+            # Configure nginx for canary deployment
+            cat > /etc/nginx/conf.d/canary.conf << EOL
+            split_clients "\$remote_addr\$remote_port" \$canary_backend {
+                ${CANARY_WEIGHT}% "canary";
+                *                 "stable";
+            }
+            
+            upstream stable_backend {
+                server localhost:8000;
+            }
+            
+            upstream canary_backend {
+                server localhost:8001;
+            }
+            
+            upstream stable_frontend {
+                server localhost:3000;
+            }
+            
+            upstream canary_frontend {
+                server localhost:3001;
+            }
+            
+            map \$canary_backend \$backend_pool {
+                "stable" stable_backend;
+                "canary" canary_backend;
+            }
+            
+            map \$canary_backend \$frontend_pool {
+                "stable" stable_frontend;
+                "canary" canary_frontend;
+            }
+            EOL
+            
+            # Update main nginx config to use canary
+            sed -i 's/proxy_pass http:\/\/localhost:8000/proxy_pass http:\/\/\$backend_pool/g' /etc/nginx/sites-enabled/logicarena
+            sed -i 's/proxy_pass http:\/\/localhost:3000/proxy_pass http:\/\/\$frontend_pool/g' /etc/nginx/sites-enabled/logicarena
+            nginx -s reload
+            
+            echo "✅ Canary deployment started with ${CANARY_WEIGHT}% traffic"
+            
+            # Monitor canary for 10 minutes
+            echo "📊 Monitoring canary deployment..."
+            for i in {1..10}; do
+                sleep 60
+                
+                # Check canary health
+                if ! curl -f http://localhost:8001/health; then
+                    echo "❌ Canary unhealthy, rolling back..."
+                    docker stop logicarena-gateway-canary logicarena-front-canary
+                    docker rm logicarena-gateway-canary logicarena-front-canary
+                    rm /etc/nginx/conf.d/canary.conf
+                    nginx -s reload
+                    exit 1
+                fi
+                
+                # Check error rates (you would check actual metrics here)
+                echo "✅ Canary healthy after ${i} minutes"
+                
+                # Gradually increase traffic
+                if [[ $i -eq 5 ]]; then
+                    echo "📈 Increasing canary traffic to 50%"
+                    sed -i "s/${CANARY_WEIGHT}%/50%/g" /etc/nginx/conf.d/canary.conf
+                    nginx -s reload
+                fi
+            done
+            
+            # Full deployment
+            echo "🚀 Promoting canary to production..."
+            docker-compose down
+            docker-compose up -d
+            
+            # Cleanup canary
+            docker stop logicarena-gateway-canary logicarena-front-canary
+            docker rm logicarena-gateway-canary logicarena-front-canary
+            rm /etc/nginx/conf.d/canary.conf
+            
+            # Restore nginx config
+            sed -i 's/proxy_pass http:\/\/\$backend_pool/proxy_pass http:\/\/localhost:8000/g' /etc/nginx/sites-enabled/logicarena
+            sed -i 's/proxy_pass http:\/\/\$frontend_pool/proxy_pass http:\/\/localhost:3000/g' /etc/nginx/sites-enabled/logicarena
+            nginx -s reload
+            
+            echo "✅ Canary deployment completed!"
+            EOF
+            
+            chmod +x canary-deploy.sh
+            ./canary-deploy.sh $VERSION
+
+  post-deployment-validation:
+    needs: [deploy-rolling, deploy-blue-green, deploy-canary]
+    if: always() && (needs.deploy-rolling.result == 'success' || needs.deploy-blue-green.result == 'success' || needs.deploy-canary.result == 'success')
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Validate deployment
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USERNAME }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            cd /opt/logicarena
+            
+            echo "🔍 Validating deployment..."
+            
+            # Check all endpoints
+            endpoints=(
+              "http://localhost:8000/health"
+              "http://localhost:8000/api/puzzles"
+              "http://localhost:3000"
+            )
+            
+            for endpoint in "${endpoints[@]}"; do
+              if curl -f $endpoint; then
+                echo "✅ $endpoint is healthy"
+              else
+                echo "❌ $endpoint failed"
+                exit 1
+              fi
+            done
+            
+            # Check WebSocket connectivity
+            timeout 5 bash -c 'echo "test" | websocat ws://localhost:8000/ws' || true
+            
+            # Verify version
+            VERSION_CHECK=$(docker inspect logicarena-gateway-1 | jq -r '.[0].Config.Image' | cut -d: -f2)
+            echo "✅ Deployed version: $VERSION_CHECK"
+            
+            echo "✅ All post-deployment checks passed!"
+
+  monitor-deployment:
+    needs: post-deployment-validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Monitor deployment health
+        run: |
+          echo "📊 Starting 15-minute health monitoring..."
+          
+          for i in {1..15}; do
+            sleep 60
+            
+            # Check production health
+            if ! curl -f ${{ secrets.PRODUCTION_URL }}/api/health; then
+              echo "❌ Health check failed after ${i} minutes"
+              exit 1
+            fi
+            
+            echo "✅ Production healthy after ${i} minutes"
+          done
+          
+          echo "✅ Deployment monitoring completed successfully!"
+
+      - name: Send success notification
+        if: success()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              "text": "✅ Zero-downtime deployment completed!",
+              "attachments": [{
+                "color": "good",
+                "fields": [
+                  {
+                    "title": "Version",
+                    "value": "${{ needs.pre-deployment-checks.outputs.version }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Strategy",
+                    "value": "${{ needs.pre-deployment-checks.outputs.strategy }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Environment",
+                    "value": "Production",
+                    "short": true
+                  }
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}

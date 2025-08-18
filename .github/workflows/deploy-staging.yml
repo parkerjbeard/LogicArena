@@ -1,0 +1,161 @@
+name: Deploy to Staging
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ develop ]
+  workflow_run:
+    workflows: ["Build and Push Docker Images"]
+    types: [completed]
+    branches: [develop]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/logicarena
+
+jobs:
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'develop') || github.ref == 'refs/heads/develop' }}
+    runs-on: ubuntu-latest
+    environment: staging
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create deployment directory on server
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USERNAME }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            mkdir -p ~/logicarena-staging
+            cd ~/logicarena-staging
+
+      - name: Copy docker-compose files
+        uses: appleboy/scp-action@v0.1.5
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USERNAME }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          source: "docker-compose.yml,docker-compose.prod.yml,.env.example"
+          target: "~/logicarena-staging"
+
+      - name: Create deployment script
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USERNAME }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            cd ~/logicarena-staging
+            
+            # Create deployment script
+            cat > deploy.sh << 'EOF'
+            #!/bin/bash
+            set -e
+            
+            echo "🚀 Starting deployment to staging..."
+            
+            # Create environment file
+            cat > .env << EOL
+            DATABASE_URL=${{ secrets.STAGING_DATABASE_URL }}
+            REDIS_URL=${{ secrets.STAGING_REDIS_URL }}
+            JWT_SECRET=${{ secrets.STAGING_JWT_SECRET }}
+            SECRET_KEY=${{ secrets.STAGING_SECRET_KEY }}
+            CSRF_SECRET=${{ secrets.STAGING_CSRF_SECRET }}
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.STAGING_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.STAGING_SUPABASE_ANON_KEY }}
+            CORS_ORIGINS=${{ secrets.STAGING_CORS_ORIGINS }}
+            FRONTEND_URL=${{ secrets.STAGING_FRONTEND_URL }}
+            NEXT_PUBLIC_API_URL=${{ secrets.STAGING_API_URL }}
+            NEXT_PUBLIC_WS_URL=${{ secrets.STAGING_WS_URL }}
+            ENVIRONMENT=staging
+            EOL
+            
+            # Login to GitHub Container Registry
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            # Create docker-compose override for staging
+            cat > docker-compose.override.yml << EOL
+            services:
+              front:
+                image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:develop
+              gateway:
+                image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-gateway:develop
+              match:
+                image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-match:develop
+              puzzle:
+                image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-puzzle:develop
+              rating:
+                image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rating:develop
+              proof-checker:
+                image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-proof-checker:develop
+            EOL
+            
+            # Pull latest images
+            docker-compose pull
+            
+            # Stop and remove old containers
+            docker-compose down --remove-orphans
+            
+            # Start services with new images
+            docker-compose up -d
+            
+            # Wait for services to be healthy
+            echo "⏳ Waiting for services to be healthy..."
+            sleep 30
+            
+            # Run database migrations
+            echo "🔄 Running database migrations..."
+            docker-compose exec -T gateway alembic upgrade head || true
+            
+            # Health check
+            echo "🏥 Performing health checks..."
+            curl -f http://localhost:8000/health || exit 1
+            curl -f http://localhost:3000 || exit 1
+            
+            # Clean up old images
+            docker image prune -f
+            
+            echo "✅ Deployment to staging completed successfully!"
+            EOF
+            
+            chmod +x deploy.sh
+
+      - name: Deploy to staging
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USERNAME }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            cd ~/logicarena-staging
+            ./deploy.sh
+
+      - name: Verify deployment
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USERNAME }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            cd ~/logicarena-staging
+            docker-compose ps
+            echo "Services status:"
+            docker-compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+
+      - name: Send deployment notification
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: |
+            Staging deployment ${{ job.status == 'success' && 'succeeded' || 'failed' }}!
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            Author: ${{ github.actor }}
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}

@@ -1,0 +1,351 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
+  pull_request:
+    branches: [ main, develop ]
+    types: [ opened, synchronize, reopened ]
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: 'Force rebuild all images'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/logicarena
+
+jobs:
+  run-tests:
+    uses: ./.github/workflows/tests.yml
+    
+  detect-changes:
+    runs-on: ubuntu-latest
+    needs: run-tests
+    outputs:
+      frontend: ${{ steps.changes.outputs.frontend }}
+      gateway: ${{ steps.changes.outputs.gateway }}
+      match: ${{ steps.changes.outputs.match }}
+      puzzle: ${{ steps.changes.outputs.puzzle }}
+      rating: ${{ steps.changes.outputs.rating }}
+      proof-checker: ${{ steps.changes.outputs.proof-checker }}
+      shared: ${{ steps.changes.outputs.shared }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            frontend:
+              - 'front/**'
+              - 'Dockerfile.front'
+            gateway:
+              - 'gateway/**'
+              - 'shared/**'
+            match:
+              - 'match/**'
+              - 'shared/**'
+            puzzle:
+              - 'puzzle/**'
+              - 'shared/**'
+            rating:
+              - 'rating/**'
+              - 'shared/**'
+            proof-checker:
+              - 'proof-checker/**'
+            shared:
+              - 'shared/**'
+
+  build-frontend:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true' || github.event.inputs.force_rebuild == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Frontend Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./front
+          file: ${{ github.workspace }}/.github/docker/Dockerfile.frontend-ci
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: |
+            type=gha
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:buildcache
+          cache-to: |
+            type=gha,mode=max
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:buildcache,mode=max
+          build-args: |
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+            DOCKER_BUILD=true
+
+  build-backend-services:
+    needs: detect-changes
+    strategy:
+      matrix:
+        service: [gateway, match, puzzle, rating, proof-checker]
+        include:
+          - service: gateway
+            context: ./gateway
+            changed: ${{ needs.detect-changes.outputs.gateway }}
+          - service: match
+            context: ./match
+            changed: ${{ needs.detect-changes.outputs.match }}
+          - service: puzzle
+            context: ./puzzle
+            changed: ${{ needs.detect-changes.outputs.puzzle }}
+          - service: rating
+            context: ./rating
+            changed: ${{ needs.detect-changes.outputs.rating }}
+          - service: proof-checker
+            context: ./proof-checker
+            changed: ${{ needs.detect-changes.outputs.proof-checker }}
+    if: matrix.changed == 'true' || needs.detect-changes.outputs.shared == 'true' || github.event.inputs.force_rebuild == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push ${{ matrix.service }} Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.service == 'proof-checker' && format('{0}/Dockerfile', matrix.context) || format('{0}/.github/docker/Dockerfile.backend-ci', github.workspace) }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: |
+            type=gha
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}:buildcache
+          cache-to: |
+            type=gha,mode=max
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}:buildcache,mode=max
+          target: production
+
+  test-docker-compose:
+    needs: [build-frontend, build-backend-services]
+    if: always() && (needs.build-frontend.result == 'success' || needs.build-backend-services.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create .env file
+        run: |
+          cat > .env << EOF
+          DATABASE_URL=postgresql://logicuser:logicpass@postgres:5432/logicarena
+          REDIS_URL=redis://redis:6379/0
+          JWT_SECRET=test-jwt-secret
+          SECRET_KEY=test-secret-key
+          CSRF_SECRET=test-csrf-secret
+          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          CORS_ORIGINS=http://localhost:3000
+          FRONTEND_URL=http://localhost:3000
+          EOF
+
+      - name: Update docker-compose to use built images
+        if: github.event_name != 'pull_request'
+        run: |
+          # Create override file to use GitHub Container Registry images
+          cat > docker-compose.override.yml << EOF
+          services:
+            front:
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:${{ github.ref_name }}
+            gateway:
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-gateway:${{ github.ref_name }}
+            match:
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-match:${{ github.ref_name }}
+            puzzle:
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-puzzle:${{ github.ref_name }}
+            rating:
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rating:${{ github.ref_name }}
+            proof-checker:
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-proof-checker:${{ github.ref_name }}
+          EOF
+
+      - name: Start services
+        run: |
+          docker-compose up -d
+          docker-compose ps
+
+      - name: Wait for services to be healthy
+        run: |
+          echo "Waiting for services to be ready..."
+          timeout 120 bash -c '
+            until curl -f http://localhost:8000/health; do
+              echo "Waiting for gateway..."
+              sleep 5
+            done
+          '
+          
+          timeout 60 bash -c '
+            until curl -f http://localhost:3000; do
+              echo "Waiting for frontend..."
+              sleep 5
+            done
+          '
+          
+          echo "All services are ready!"
+
+      - name: Run smoke tests
+        run: |
+          # Test frontend
+          curl -f http://localhost:3000 || exit 1
+          
+          # Test API health endpoint
+          curl -f http://localhost:8000/health || exit 1
+          
+          # Test WebSocket endpoint exists
+          curl -f -I http://localhost:8000/ws || exit 1
+          
+          echo "All smoke tests passed!"
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          docker-compose logs > docker-compose-logs.txt
+          docker ps -a > docker-ps.txt
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: docker-compose-logs
+          path: |
+            docker-compose-logs.txt
+            docker-ps.txt
+
+      - name: Stop services
+        if: always()
+        run: |
+          docker-compose down -v
+
+  publish-release:
+    needs: test-docker-compose
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag images as stable
+        run: |
+          services=("frontend" "gateway" "match" "puzzle" "rating" "proof-checker")
+          for service in "${services[@]}"; do
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${service}:main || continue
+            docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${service}:main ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${service}:stable
+            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${service}:stable
+          done
+
+  build-summary:
+    runs-on: ubuntu-latest
+    needs: [build-frontend, build-backend-services, test-docker-compose]
+    if: always()
+    steps:
+      - name: Build Summary
+        run: |
+          echo "## Docker Build Summary 🐳" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Status" >> $GITHUB_STEP_SUMMARY
+          echo "| Service | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend | ${{ needs.build-frontend.result == 'success' && '✅ Success' || needs.build-frontend.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend Services | ${{ needs.build-backend-services.result == 'success' && '✅ Success' || needs.build-backend-services.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Integration Test | ${{ needs.test-docker-compose.result == 'success' && '✅ Success' || needs.test-docker-compose.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            echo "### 📦 Published Images" >> $GITHUB_STEP_SUMMARY
+            echo "Images are available at:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-{service}:${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+  notify:
+    uses: ./.github/workflows/notify.yml
+    needs: [build-frontend, build-backend-services, test-docker-compose]
+    if: always()
+    with:
+      status: ${{ (needs.build-frontend.result == 'success' && needs.build-backend-services.result == 'success' && needs.test-docker-compose.result == 'success') && 'success' || 'failure' }}
+      workflow_name: 'Docker Build and Push'
+      environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'development' }}
+      details: |
+        Frontend Build: ${{ needs.build-frontend.result }}
+        Backend Build: ${{ needs.build-backend-services.result }}
+        Integration Test: ${{ needs.test-docker-compose.result }}
+    secrets: inherit

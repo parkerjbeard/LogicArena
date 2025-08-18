@@ -1,0 +1,165 @@
+name: Send Notifications
+
+on:
+  workflow_call:
+    inputs:
+      status:
+        required: true
+        type: string
+      workflow_name:
+        required: true
+        type: string
+      environment:
+        required: false
+        type: string
+        default: 'development'
+      details:
+        required: false
+        type: string
+        default: ''
+    secrets:
+      SLACK_WEBHOOK:
+        required: false
+      DISCORD_WEBHOOK:
+        required: false
+      EMAIL_NOTIFICATION_LIST:
+        required: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prepare notification data
+        id: prepare
+        run: |
+          # Set status emoji
+          if [[ "${{ inputs.status }}" == "success" ]]; then
+            EMOJI="✅"
+            COLOR="good"
+          elif [[ "${{ inputs.status }}" == "failure" ]]; then
+            EMOJI="❌"
+            COLOR="danger"
+          else
+            EMOJI="⚠️"
+            COLOR="warning"
+          fi
+          
+          echo "emoji=$EMOJI" >> $GITHUB_OUTPUT
+          echo "color=$COLOR" >> $GITHUB_OUTPUT
+          
+          # Create notification message
+          MESSAGE="${EMOJI} **${{ inputs.workflow_name }}** - ${{ inputs.status }}
+          
+          Environment: ${{ inputs.environment }}
+          Repository: ${{ github.repository }}
+          Branch: ${{ github.ref_name }}
+          Commit: ${{ github.sha }}
+          Actor: ${{ github.actor }}
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          
+          ${{ inputs.details }}"
+          
+          echo "message<<EOF" >> $GITHUB_OUTPUT
+          echo "$MESSAGE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Send Slack notification
+        if: ${{ secrets.SLACK_WEBHOOK != '' }}
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              "text": "${{ steps.prepare.outputs.emoji }} ${{ inputs.workflow_name }} - ${{ inputs.status }}",
+              "attachments": [{
+                "color": "${{ steps.prepare.outputs.color }}",
+                "fields": [
+                  {
+                    "title": "Environment",
+                    "value": "${{ inputs.environment }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Branch",
+                    "value": "${{ github.ref_name }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Actor",
+                    "value": "${{ github.actor }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Commit",
+                    "value": "${{ github.sha }}",
+                    "short": true
+                  }
+                ],
+                "actions": [
+                  {
+                    "type": "button",
+                    "text": "View Run",
+                    "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  }
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+      - name: Send Discord notification
+        if: ${{ secrets.DISCORD_WEBHOOK != '' }}
+        uses: Ilshidur/action-discord@0.3.2
+        with:
+          args: '${{ steps.prepare.outputs.message }}'
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+
+      - name: Create GitHub issue on failure
+        if: ${{ inputs.status == 'failure' && github.event_name != 'pull_request' }}
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 ${{ inputs.workflow_name }} failed on ${{ github.ref_name }}`,
+              body: `## Workflow Failure
+              
+              **Workflow:** ${{ inputs.workflow_name }}
+              **Status:** ${{ inputs.status }}
+              **Environment:** ${{ inputs.environment }}
+              **Branch:** ${{ github.ref_name }}
+              **Commit:** ${{ github.sha }}
+              **Actor:** ${{ github.actor }}
+              **Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+              
+              ### Details
+              ${{ inputs.details }}
+              
+              ### Action Items
+              - [ ] Investigate the failure
+              - [ ] Fix the issue
+              - [ ] Re-run the workflow
+              
+              /cc @${{ github.actor }}`,
+              labels: ['bug', 'ci/cd', 'priority:high']
+            });
+            
+            console.log(`Created issue #${issue.data.number}`);
+
+      - name: Add comment to PR
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const emoji = '${{ steps.prepare.outputs.emoji }}';
+            const status = '${{ inputs.status }}';
+            const workflow = '${{ inputs.workflow_name }}';
+            
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `${emoji} **${workflow}** ${status}\n\n[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})`
+            });
