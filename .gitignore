@@ -460,3 +460,40 @@ test_*.py
 tutorial_puzzle_generator.py
 seed_tutorial_puzzles.py
 dev-scripts/
+
+# ====================
+# DEVELOPMENT FILES
+# ====================
+
+# Demo files
+demo_*.py
+simple_demo.py
+
+# Playwright MCP
+.playwright-mcp/
+
+# Package lock at root (only need in subdirs)
+/package-lock.json
+
+# Development documentation
+.github/IMPLEMENTATION_SUMMARY.md
+
+# Algorithmic puzzle generators (development)
+puzzle/algorithmic_generator.py
+puzzle/difficulty_system.py
+puzzle/enhanced_hint_generator.py
+puzzle/hint_generator.py
+puzzle/natural_deduction_prover.py
+puzzle/natural_deduction_prover_fix.py
+puzzle/proof_tree.py
+puzzle/puzzle_verifier.py
+seed_algorithmic_puzzles.py
+
+# Gateway development files
+gateway/app/tracing.py
+gateway/app/tracing_utils.py
+gateway/app/puzzles/algorithmic_router.py
+gateway/app/puzzles/router_update.py
+
+# Load testing
+gateway/load_tests/
